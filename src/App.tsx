@@ -1118,7 +1118,7 @@ export default function App() {
         }
 
         const roundTripInstruction = aiIsRoundTrip
-          ? `ROUND-TRIP REQUIREMENT: This is a ROUND-TRIP journey starting and ending at "${startText}". The final waypoint destination MUST return to "${startText}", and its "stayNights" MUST be 0.`
+          ? `ROUND-TRIP REQUIREMENT: This is a ROUND-TRIP journey starting and ending at "${startText}". The final waypoint destination MUST return to "${startText}", its "isHomeReturn" MUST be true, and its "stayNights" MUST be 0.`
           : `ONE-WAY REQUIREMENT: This is a ONE-WAY trip ending at the final destination.`;
 
         const formattedDestList = parsedDests.length > 0
@@ -1161,7 +1161,8 @@ ${formattedDestList}
           User's Custom Trip Request:
           "${promptText}"
 
-          RULE BEHAVIOR: By default, DO NOT enforce 3-3-3 or 2-2-2 rules unless the user explicitly requested a specific rule in their text above. If the final leg returns home, set stayNights to 0.
+          RULE BEHAVIOR: By default, DO NOT enforce 3-3-3 or 2-2-2 rules unless the user explicitly requested a specific rule in their text above.
+          If the prompt indicates returning home or ending at the starting city, set "isHomeReturn": true and "stayNights": 0 for that final waypoint.
         `;
       }
 
@@ -1171,7 +1172,7 @@ ${formattedDestList}
         
         DESTINATION PARSING & STAY RULES:
         1. Commas within location strings (e.g., 'Glacier NP, MT' or 'Banff, AB') represent City, State/Province. NEVER split location names on commas.
-        2. For the final waypoint that returns the traveler to their starting origin / home, set "stayNights": 0.
+        2. For the final waypoint that returns the traveler to their starting origin / home base (or if the user's custom prompt indicates returning home or ending at their starting city), set "isHomeReturn": true and "stayNights": 0.
         3. Strictly evaluate if the requested itinerary driving distances fit the user's Max Daily Driving Hours setting.
         
         USER'S ACTIVE RV RIG SPECS & FUEL CONSTRAINTS:
@@ -1197,6 +1198,7 @@ ${formattedDestList}
               "origin": "Starting City, State",
               "destination": "Destination Place Name, City, State",
               "stayNights": 3,
+              "isHomeReturn": false,
               "depHour": 9,
               "depMin": 0,
               "depAmPm": "AM",
@@ -1281,13 +1283,14 @@ ${formattedDestList}
 
     const formattedWaypoints = generatedPlanPreview.waypoints.map((wp: any, idx: number) => {
       const isFinalWaypoint = idx === totalWaypointsCount - 1;
-      const isReturningHome = isFinalWaypoint && (aiIsRoundTrip || wp.destination?.toLowerCase().includes(aiStartLocation.toLowerCase().split(',')[0]));
+      const isReturningHome = wp.isHomeReturn === true || (isFinalWaypoint && (aiIsRoundTrip || wp.destination?.toLowerCase().includes(aiStartLocation.toLowerCase().split(',')[0])));
       const stayNightsValue = isReturningHome ? 0 : (wp.stayNights !== undefined ? Math.max(0, parseInt(wp.stayNights, 10) || 0) : 3);
 
       return {
         id: Date.now() + idx * 20,
         origin: wp.origin || (idx === 0 ? aiStartLocation : ''),
         isExpanded: true,
+        isHomeReturn: isReturningHome,
         stops: [
           {
             id: Date.now() + idx * 20 + 1,
@@ -1529,6 +1532,7 @@ ${formattedDestList}
         id: Date.now(), 
         origin: defaultOrigin,
         isExpanded: true,
+        isHomeReturn: false,
         stops: [
           {
             id: Date.now() + 1,
@@ -2285,6 +2289,13 @@ ${formattedDestList}
                               const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
                               const weatherInfo = stop.destination ? destinationWeathers[stop.destination] : null;
 
+                              // Detection whether this stop represents the final return home
+                              const isLastWaypoint = wIdx === itineraryWaypoints.length - 1;
+                              const firstOrigin = (itineraryWaypoints[0]?.origin || aiStartLocation || userLocationName || '').toLowerCase().split(',')[0].trim();
+                              const destCity = (stop.destination || '').toLowerCase().split(',')[0].trim();
+                              const isMatchingHomeOrigin = firstOrigin && destCity && (firstOrigin.includes(destCity) || destCity.includes(firstOrigin));
+                              const isHomeReturnStop = wp.isHomeReturn === true || (isLastWaypoint && (wp.stayNights === 0 || aiIsRoundTrip || isMatchingHomeOrigin));
+
                               return (
                                 <div key={stop.id} className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
                                   <div className="flex items-center justify-between">
@@ -2392,16 +2403,18 @@ ${formattedDestList}
                                       )}
                                     </div>
 
-                                    {/* RV Site Picker Button */}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenSitePicker(wp.id, stop.id, stop.destination, stayCount)}
-                                      className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
-                                      title="Compare and pick top RV campgrounds tailored to your rig"
-                                    >
-                                      <i className="fa-solid fa-campground text-amber-300"></i>
-                                      <span>RV Site Picker</span>
-                                    </button>
+                                    {/* RV Site Picker Button - Hidden for Final Home Return Stop */}
+                                    {!isHomeReturnStop && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSitePicker(wp.id, stop.id, stop.destination, stayCount)}
+                                        className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
+                                        title="Compare and pick top RV campgrounds tailored to your rig"
+                                      >
+                                        <i className="fa-solid fa-campground text-amber-300"></i>
+                                        <span>RV Site Picker</span>
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
