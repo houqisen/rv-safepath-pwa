@@ -180,7 +180,7 @@ export default function App() {
   const [destinationWeathers, setDestinationWeathers] = useState<Record<string, any>>({});
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
 
-  // Gemini AI Trip Copilot State
+  // Gemini AI Trip Copilot State (Reads seamlessly from env or localStorage)
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiInputMode, setAiInputMode] = useState<'guided' | 'custom'>('guided');
   const [aiStartLocation, setAiStartLocation] = useState("Bellevue, WA");
@@ -192,7 +192,6 @@ export default function App() {
   const [aiIsRoundTrip, setAiIsRoundTrip] = useState(true);
   const [aiMaxDailyHours, setAiMaxDailyHours] = useState(5);
   const [aiCustomPrompt, setAiCustomPrompt] = useState("");
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('gemini_api_key') || DEFAULT_GEMINI_API_KEY);
   const [isGeneratingTrip, setIsGeneratingTrip] = useState(false);
   const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
   const [generatedPlanPreview, setGeneratedPlanPreview] = useState<any | null>(null);
@@ -1086,9 +1085,9 @@ export default function App() {
   // Gemini AI Trip Plan Generator with Multi-Stop Nested Days & Dynamic Rig Profile Integration
   const handleGenerateAiTrip = async (e: React.FormEvent) => {
     e.preventDefault();
-    const effectiveKey = geminiApiKey.trim();
+    const effectiveKey = (localStorage.getItem('gemini_api_key') || DEFAULT_GEMINI_API_KEY || "").trim();
     if (!effectiveKey) {
-      setAiErrorMessage("Please provide a Gemini API Key to generate itineraries.");
+      setAiErrorMessage("Please configure your VITE_GEMINI_API_KEY environment variable in Netlify or settings to use AI features.");
       return;
     }
 
@@ -1097,8 +1096,6 @@ export default function App() {
     setGeneratedPlanPreview(null);
 
     try {
-      localStorage.setItem('gemini_api_key', effectiveKey);
-
       const combinedLen = profile.combinedLengthFeet || profile.lengthFeet;
       const safeMpg = Number(profile.towingMpg) || 10;
       const safeFuelRangeVal = safeMpg * 25;
@@ -1287,7 +1284,7 @@ ${formattedDestList}
       if (parsedPlan && parsedPlan.waypoints) {
         setGeneratedPlanPreview(parsedPlan);
       } else {
-        setAiErrorMessage(lastError || "Could not generate trip plan. Please try again in a few moments.");
+        setAiErrorMessage(lastError || "Could not generate trip plan. Please verify your connection.");
       }
 
     } catch (err: any) {
@@ -1363,7 +1360,7 @@ ${formattedDestList}
     }, 100);
   };
 
-  // AI RV Site Picker Engine Handler
+  // AI RV Site Picker Engine Handler with Enhanced Full Hookups (FHU) Rig-Matching
   const handleOpenSitePicker = async (waypointId: number, stopId: number, destination: string, stayNights: number) => {
     const cleanDest = destination?.trim();
     if (!cleanDest) {
@@ -1371,10 +1368,9 @@ ${formattedDestList}
       return;
     }
 
-    const effectiveKey = geminiApiKey.trim();
+    const effectiveKey = (localStorage.getItem('gemini_api_key') || DEFAULT_GEMINI_API_KEY || "").trim();
     if (!effectiveKey) {
-      setAiErrorMessage("Please provide a Gemini API Key to use the RV Site Picker.");
-      setIsAiModalOpen(true);
+      setNoticeMessage("Please configure your Gemini API Key in Netlify environment variables.");
       return;
     }
 
@@ -1387,6 +1383,13 @@ ${formattedDestList}
     try {
       const { season } = calculateTripDurationAndSeason(aiDepartureDate, aiReturnDate);
       const combinedLen = profile.combinedLengthFeet || profile.lengthFeet;
+      const hookupLabels: Record<string, string> = {
+        full: 'Must Be Full Hookups (Water, 30A/50A Electric, and Sewer at campsite)',
+        partial: 'Water & Electric OK (Sewer dump station on campground premises)',
+        electric: 'Electric Only OK (30A/50A power pedestal)',
+        dry: 'Dry Camping / Boondocking OK (Off-grid, no hookups required)'
+      };
+      const hookupPrefDesc = hookupLabels[profile.minHookup] || profile.minHookup;
 
       const systemPrompt = `
         You are RV SafePath Site Selection Expert, specialized in matching campgrounds and RV resorts to specific vehicle dimensions and towing setups.
@@ -1396,7 +1399,7 @@ ${formattedDestList}
         - Height Clearance: ${profile.heightFeet} ft ${profile.heightInches} in (Ensure low branch clearance on entrance roads)
         - Combined Driving Length: ${combinedLen} ft (Ensure campsite pads accommodate >= ${combinedLen}ft)
         - Electrical Service: ${profile.ampRating}
-        - Hookup Preference: ${profile.minHookup}
+        - Hookup Requirement: ${hookupPrefDesc}
         - Towing / Drive Setup: ${profile.towSetup}
         - Active Memberships: ${profile.memberships.join(', ') || 'None'}
         - Travel Season: ${season}
@@ -1406,7 +1409,7 @@ ${formattedDestList}
         CRITICAL EVALUATION FACTORS:
         1. Maneuverability & Towing Ease: Note whether highway turn-off is an easy right-hand turn or a difficult left-turn across oncoming traffic, entrance road width, and pull-through vs back-in pads.
         2. Proximity: Distance to main parks, lake/river, or town.
-        3. Hookups & Pedestals: 30A/50A, full hookups vs partial.
+        3. Hookups & Utilities (FHU Status): Clearly classify whether the campsite offers FULL HOOKUPS (FHU: Water, 30A/50A Electric, and Sewer at site), PARTIAL HOOKUPS (Water + 30A/50A Electric only, with dump station), or DRY CAMPING. Match the user's hookup requirement: "${hookupPrefDesc}".
         4. Starlink & Connectivity: Open sky vs tree canopy, cell reception.
         5. Seasonality & Amenities: Dog park, heated risers in freeze, pool, club discounts.
 
@@ -1422,7 +1425,7 @@ ${formattedDestList}
               "proximity": "e.g., 2.5 miles to Park West Entrance; 5 min drive to groceries",
               "viewSetting": "e.g., Lakefront mountain view; peaceful pine forest backdrop",
               "padType": "e.g., 50ft Paved Pull-Through (Level Concrete)",
-              "hookups": "e.g., Full Hookup (30A & 50A, City Water, Sewer)",
+              "hookups": "e.g., Full Hookup (30A & 50A, City Water, Sewer at site)",
               "turnEase": "e.g., Direct right-hand turn off Hwy 1; wide two-lane swing, no tight turns",
               "connectivity": "e.g., Wide open southern sky (Great for Starlink); strong Verizon LTE",
               "amenities": "e.g., Dog park, clean hot showers, laundry, fire pits, camp store",
@@ -1480,7 +1483,7 @@ ${formattedDestList}
       if (parsedSites && parsedSites.sites) {
         setSitePickerResults(parsedSites);
       } else {
-        setSitePickerError(lastErr || "Could not find RV sites. Please verify destination and Gemini API key.");
+        setSitePickerError(lastErr || "Could not find RV sites. Please verify destination and try again.");
       }
 
     } catch (err: any) {
@@ -2588,7 +2591,7 @@ ${formattedDestList}
         </main>
       </div>
 
-      {/* MODAL 1: GEMINI AI TRIP COPILOT MODAL */}
+      {/* MODAL 1: GEMINI AI TRIP COPILOT MODAL (CLEANED UI WITHOUT API KEY BOX) */}
       {isAiModalOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-[9999] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
@@ -2788,22 +2791,7 @@ ${formattedDestList}
                       <i className="fa-solid fa-shield-halved text-emerald-400"></i> Rig Guard &amp; Fuel Safety Active:
                     </div>
                     <div>Max Height: <strong className="text-amber-400">{formattedHeight}</strong> | Combined Length: <strong className="text-slate-200">{combinedLen}ft</strong> | Weight: <strong className="text-slate-200">{profile.weightLbs.toLocaleString()} lbs</strong></div>
-                    <div>Towing Economy: <strong className="text-amber-300">{safeMpgDisplay} MPG</strong> (~{safeFuelRange} mi safe range) | Power: <strong className="text-emerald-400">{profile.ampRating}</strong></div>
-                  </div>
-
-                  {/* Gemini API Key Setting */}
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1 flex justify-between">
-                      <span>Gemini API Key</span>
-                      <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">Get Free Key from Google AI Studio</a>
-                    </label>
-                    <input
-                      type="password"
-                      value={geminiApiKey}
-                      onChange={(e) => setGeminiApiKey(e.target.value)}
-                      placeholder="AIzaSy... or AQ..."
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-emerald-500"
-                    />
+                    <div>Towing Economy: <strong className="text-amber-300">{safeMpgDisplay} MPG</strong> (~{safeFuelRange} mi safe range) | Power: <strong className="text-emerald-400">{profile.ampRating}</strong> | Min Hookup: <strong className="text-sky-300">{profile.minHookup.toUpperCase()}</strong></div>
                   </div>
 
                   {aiErrorMessage && (
@@ -2970,7 +2958,7 @@ ${formattedDestList}
                   <i className="fa-solid fa-compass animate-spin text-3xl text-emerald-400"></i>
                   <div className="font-bold text-sm text-slate-200">Evaluating RV Campsites for {activeSitePickerTarget?.destination}...</div>
                   <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    Analyzing highway turn approach ease, campsite pad lengths ({combinedLen}ft), 30A/50A electrical pedestals, Starlink sky clearance &amp; season availability.
+                    Analyzing highway turn approach ease, campsite pad lengths ({combinedLen}ft), Full Hookups (FHU) / 30A/50A electrical pedestals, Starlink sky clearance &amp; season availability.
                   </p>
                 </div>
               ) : sitePickerError ? (
@@ -3027,10 +3015,18 @@ ${formattedDestList}
                           ))}
                         </tr>
                         <tr>
-                          <td className="p-3 font-semibold text-slate-400 bg-slate-900/50">⚡ Power &amp; Utilities</td>
-                          {sitePickerResults.sites.map((site: any, idx: number) => (
-                            <td key={idx} className="p-3 border-l border-slate-800 font-medium text-sky-300">{site.hookups}</td>
-                          ))}
+                          <td className="p-3 font-semibold text-slate-400 bg-slate-900/50">🔌 Hookups &amp; Utilities (FHU)</td>
+                          {sitePickerResults.sites.map((site: any, idx: number) => {
+                            const isFHU = site.hookups?.toLowerCase().includes('full hookup') || site.hookups?.toLowerCase().includes('fhu');
+                            return (
+                              <td key={idx} className="p-3 border-l border-slate-800">
+                                <div className={`font-semibold flex items-center gap-1.5 ${isFHU ? 'text-emerald-300' : 'text-sky-300'}`}>
+                                  <span>{isFHU ? '✅' : '🔌'}</span>
+                                  <span>{site.hookups}</span>
+                                </div>
+                              </td>
+                            );
+                          })}
                         </tr>
                         <tr>
                           <td className="p-3 font-semibold text-slate-400 bg-slate-900/50">🛣️ Driving &amp; Turn Ease</td>
