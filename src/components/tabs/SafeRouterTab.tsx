@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { RvProfile } from '../../types/rv';
 import { RouteSummary } from '../../types/places';
 import { DARK_MAP_STYLE } from '../../constants/mapStyles';
+import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
 
 interface SafeRouterTabProps {
   profile: RvProfile;
@@ -57,8 +58,9 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
       (originInputRef.current as any).__autocompleteAttached = true;
       originAuto.addListener('place_changed', () => {
         const place = originAuto.getPlace();
-        if (place && place.formatted_address) {
-          setRouteOrigin(place.formatted_address);
+        const addr = formatResolvedPlaceAddress(place);
+        if (addr) {
+          setRouteOrigin(addr);
         }
       });
     }
@@ -68,8 +70,9 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
       (destInputRef.current as any).__autocompleteAttached = true;
       destAuto.addListener('place_changed', () => {
         const place = destAuto.getPlace();
-        if (place && place.formatted_address) {
-          setRouteDestination(place.formatted_address);
+        const addr = formatResolvedPlaceAddress(place);
+        if (addr) {
+          setRouteDestination(addr);
         }
       });
     }
