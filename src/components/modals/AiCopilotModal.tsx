@@ -291,7 +291,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
 
               <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-700/60 text-[11px] text-slate-400 space-y-1">
                 <div className="text-slate-300 font-semibold flex items-center gap-1.5 text-xs">
-                  <i className="fa-solid fa-shield-halved text-emerald-400"></i> Rig Guard &amp; Fuel Safety Active:
+                  <i className="fa-solid fa-shield-halved text-emerald-400"></i> RV Guard &amp; Fuel Safety Active:
                 </div>
                 <div>Max Height: <strong className="text-amber-400">{formattedHeight}</strong> | Combined Length: <strong className="text-slate-200">{combinedLen}ft</strong> | Weight: <strong className="text-slate-200">{profile.weightLbs.toLocaleString()} lbs</strong></div>
                 <div>Towing Economy: <strong className="text-amber-300">{safeMpgDisplay} MPG</strong> (~{safeFuelRange} mi safe range) | Power: <strong className="text-emerald-400">{profile.ampRating}</strong> | Min Hookup: <strong className="text-sky-300">{profile.minHookup.toUpperCase()}</strong></div>
