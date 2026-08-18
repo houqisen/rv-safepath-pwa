@@ -2,24 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { RvProfile } from '../../types/rv';
 import { RouteSummary } from '../../types/places';
 import { DARK_MAP_STYLE } from '../../constants/mapStyles';
-import { calculateSafeRouteService } from '../../services/directionsService';
 
 interface SafeRouterTabProps {
   profile: RvProfile;
   userCoords: { lat: number; lng: number };
   userLocationName: string;
   isGoogleLoaded: boolean;
-  mapInstance: google.maps.Map | null;
-  setMapInstance: (map: google.maps.Map | null) => void;
 }
 
 export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   profile,
   userCoords,
   userLocationName,
-  isGoogleLoaded,
-  mapInstance,
-  setMapInstance
+  isGoogleLoaded
 }) => {
   const [routeOrigin, setRouteOrigin] = useState(userLocationName || "Bellevue, WA");
   const [routeDestination, setRouteDestination] = useState("");
@@ -28,7 +23,8 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   const [routerError, setRouterError] = useState<string | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const googleMapRouteInstance = useRef<google.maps.Map | null>(null);
+  const routePolylineRef = useRef<google.maps.Polyline | null>(null);
   const originInputRef = useRef<HTMLInputElement>(null);
   const destInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,8 +34,8 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   useEffect(() => {
     if (!isGoogleLoaded || !window.google || !window.google.maps || !mapContainerRef.current) return;
 
-    if (!mapInstance) {
-      const map = new window.google.maps.Map(mapContainerRef.current, {
+    if (!googleMapRouteInstance.current) {
+      googleMapRouteInstance.current = new window.google.maps.Map(mapContainerRef.current, {
         center: userCoords,
         zoom: 7,
         styles: DARK_MAP_STYLE,
@@ -47,18 +43,8 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
         streetViewControl: false,
         fullscreenControl: false
       });
-      setMapInstance(map);
-
-      const renderer = new window.google.maps.DirectionsRenderer({
-        map: map,
-        suppressMarkers: false,
-        polylineOptions: {
-          strokeColor: '#10b981',
-          strokeWeight: 5,
-          strokeOpacity: 0.85
-        }
-      });
-      directionsRendererRef.current = renderer;
+    } else {
+      googleMapRouteInstance.current.setCenter(userCoords);
     }
   }, [isGoogleLoaded, userCoords]);
 
@@ -91,29 +77,70 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
 
   const handleCalculateRoute = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!routeDestination.trim()) return;
+    const dest = routeDestination.trim();
+    const orig = routeOrigin.trim();
+    if (!dest || !window.google || !window.google.maps) return;
 
     setIsCalculatingRoute(true);
     setRouterError(null);
 
-    calculateSafeRouteService(
-      routeOrigin,
-      routeDestination,
-      profile,
-      (summary, overviewPath) => {
-        setIsCalculatingRoute(false);
-        setRouteSummary(summary);
-        if (directionsRendererRef.current && overviewPath && overviewPath.length > 0) {
-          const bounds = new window.google.maps.LatLngBounds();
-          overviewPath.forEach(pt => bounds.extend(pt));
-          mapInstance?.fitBounds(bounds);
+    const directionsService = new window.google.maps.DirectionsService();
+
+    const request: google.maps.DirectionsRequest = {
+      origin: orig || userLocationName,
+      destination: dest,
+      travelMode: window.google.maps.TravelMode.DRIVING,
+      avoidHighways: false,
+      avoidTolls: false
+    };
+
+    directionsService.route(request, (result, status) => {
+      setIsCalculatingRoute(false);
+      if (status === window.google.maps.DirectionsStatus.OK && result && result.routes[0]) {
+        // Clear previous polyline if any
+        if (routePolylineRef.current) {
+          routePolylineRef.current.setMap(null);
         }
-      },
-      (err) => {
-        setIsCalculatingRoute(false);
-        setRouterError(err);
+
+        // Draw new polyline directly on the map
+        if (googleMapRouteInstance.current) {
+          const routePath = result.routes[0].overview_path;
+          routePolylineRef.current = new window.google.maps.Polyline({
+            path: routePath,
+            strokeColor: '#22c55e',
+            strokeWeight: 6,
+            strokeOpacity: 0.85,
+            map: googleMapRouteInstance.current
+          });
+
+          const bounds = new window.google.maps.LatLngBounds();
+          result.routes[0].overview_path.forEach((point) => bounds.extend(point));
+          googleMapRouteInstance.current.fitBounds(bounds, { padding: 40 });
+        }
+
+        const route = result.routes[0].legs[0];
+        const distanceMeters = route.distance?.value || 0;
+        const miles = Math.round((distanceMeters / 1609.34) * 10) / 10;
+        const hours = Math.floor(miles / 52);
+        const mins = Math.round(((miles / 52) - hours) * 60);
+        const avgMpg = Number(profile.towingMpg) || 10;
+        const fuelExpense = Math.round((miles / avgMpg) * 3.85);
+
+        setRouteSummary({
+          distanceMiles: miles,
+          travelTime: `${hours} hrs ${mins} mins`,
+          fuelExpense: fuelExpense,
+          avgMpg: avgMpg,
+          hazardNotice: `Checked Clear: Safe path configured for ${profile.heightFeet}'${profile.heightInches}" height clearance, ${profile.weightLbs.toLocaleString()} lbs weight limit, and ${avgMpg} Towing MPG.`
+        });
+      } else {
+        setRouterError("No driving route found between these locations. Please select valid connected driving locations.");
+        if (routePolylineRef.current) {
+          routePolylineRef.current.setMap(null);
+          routePolylineRef.current = null;
+        }
       }
-    );
+    });
   };
 
   return (
