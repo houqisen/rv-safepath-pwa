@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RvProfile } from './types/rv';
 import { Waypoint, WaypointStop, AiPlanPreview, DestinationWeather } from './types/itinerary';
 import { ChecklistTask } from './types/checklist';
@@ -19,8 +19,15 @@ import { AiCopilotModal } from './components/modals/AiCopilotModal';
 import { RvSitePickerModal } from './components/modals/RvSitePickerModal';
 import { RvProfileModal } from './components/modals/RvProfileModal';
 
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'finder' | 'router' | 'planner' | 'checklists'>('planner');
+  const [activeTab, setActiveTab] = useState<'intime' | 'router' | 'planner' | 'checklist'>('intime');
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+
+  // Map Instances
+  const [mapInTimeInstance, setMapInTimeInstance] = useState<google.maps.Map | null>(null);
+  const [mapRouteInstance, setMapRouteInstance] = useState<google.maps.Map | null>(null);
 
   // RV Profile State
   const [profile, setProfile] = useState<RvProfile>(() => {
@@ -48,6 +55,7 @@ export default function App() {
 
   // Weather State
   const [destinationWeathers, setDestinationWeathers] = useState<Record<string, DestinationWeather>>({});
+  const [isLoadingWeather, setIsLoadingWeather] = useState(false);
 
   // Checklists State
   const [departureTasks, setDepartureTasks] = useState<ChecklistTask[]>(() => {
@@ -91,6 +99,37 @@ export default function App() {
     results: null
   });
 
+  // Dynamic Google Maps Script & FontAwesome Loader
+  useEffect(() => {
+    if (!document.getElementById('fa-cdn-css')) {
+      const link = document.createElement('link');
+      link.id = 'fa-cdn-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
+      document.head.appendChild(link);
+    }
+
+    if (!document.getElementById('pac-custom-style')) {
+      const style = document.createElement('style');
+      style.id = 'pac-custom-style';
+      style.innerHTML = `.pac-container { z-index: 100000 !important; }`;
+      document.head.appendChild(style);
+    }
+
+    if (window.google && window.google.maps) {
+      setIsGoogleLoaded(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&v=weekly`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setIsGoogleLoaded(true);
+    script.onerror = () => setIsGoogleLoaded(false);
+    document.head.appendChild(script);
+  }, []);
+
   // Geolocation Setup
   useEffect(() => {
     if (navigator.geolocation) {
@@ -130,21 +169,41 @@ export default function App() {
 
   // Recalculate Waypoint Metrics when stops/origins change
   useEffect(() => {
+    if (!isGoogleLoaded) return;
     waypoints.forEach((wp) => {
       calculateWaypointMetricsService(wp, (calculatedWp) => {
         setWaypoints(prev => prev.map(item => item.id === calculatedWp.id ? calculatedWp : item));
       });
     });
-  }, [waypoints.map(w => `${w.origin}->${w.stops.map(s => s.destination).join(',')}`).join('|')]);
+  }, [isGoogleLoaded, waypoints.map(w => `${w.origin}->${w.stops.map(s => s.destination).join(',')}`).join('|')]);
 
   // Fetch Live Weather for Stops
-  useEffect(() => {
+  const handleFetchWeather = useCallback(() => {
+    setIsLoadingWeather(true);
     fetchLiveWeatherForStops(waypoints, destinationWeathers).then(newWeathers => {
       if (Object.keys(newWeathers).length > 0) {
         setDestinationWeathers(prev => ({ ...prev, ...newWeathers }));
       }
-    });
+      setIsLoadingWeather(false);
+    }).catch(() => setIsLoadingWeather(false));
+  }, [waypoints, destinationWeathers]);
+
+  useEffect(() => {
+    handleFetchWeather();
   }, [waypoints]);
+
+  // Tab Switch Handler with Map Resizing
+  const handleTabChange = (newTab: 'intime' | 'router' | 'planner' | 'checklist') => {
+    setTimeout(() => {
+      if (newTab === 'intime' && mapInTimeInstance) {
+        window.google?.maps?.event?.trigger(mapInTimeInstance, 'resize');
+      } else if (newTab === 'router' && mapRouteInstance) {
+        window.google?.maps?.event?.trigger(mapRouteInstance, 'resize');
+      } else if (newTab === 'planner') {
+        handleFetchWeather();
+      }
+    }, 100);
+  };
 
   // AI Copilot Plan Handler
   const handleApplyAiPlan = (plan: AiPlanPreview, mode: 'replace' | 'append') => {
@@ -293,31 +352,40 @@ export default function App() {
       <Header profile={profile} onOpenProfile={() => setIsRvProfileOpen(true)} />
 
       {/* Main Content Layout */}
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Navigation Sidebar */}
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} profile={profile} />
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} profile={profile} onTabChange={handleTabChange} />
 
         {/* Tab Views */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
-          {activeTab === 'finder' && (
+        <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+          {/* TAB 1: In-Time Finder */}
+          <div className={`${activeTab === 'intime' ? 'flex' : 'hidden'} flex-1 h-full w-full`}>
             <InTimeFinderTab
               profile={profile}
               userCoords={userCoords}
               userLocationName={userLocationName}
+              isGoogleLoaded={isGoogleLoaded}
+              mapInstance={mapInTimeInstance}
+              setMapInstance={setMapInTimeInstance}
               setUserCoords={setUserCoords}
               setUserLocationName={setUserLocationName}
             />
-          )}
+          </div>
 
-          {activeTab === 'router' && (
+          {/* TAB 2: Safe Router */}
+          <div className={`${activeTab === 'router' ? 'flex' : 'hidden'} flex-1 h-full w-full`}>
             <SafeRouterTab
               profile={profile}
               userCoords={userCoords}
               userLocationName={userLocationName}
+              isGoogleLoaded={isGoogleLoaded}
+              mapInstance={mapRouteInstance}
+              setMapInstance={setMapRouteInstance}
             />
-          )}
+          </div>
 
-          {activeTab === 'planner' && (
+          {/* TAB 3: Trip Planner */}
+          <div className={`${activeTab === 'planner' ? 'flex' : 'hidden'} flex-1 h-full w-full overflow-y-auto`}>
             <TripPlannerTab
               waypoints={waypoints}
               destinationWeathers={destinationWeathers}
@@ -329,9 +397,10 @@ export default function App() {
               onUpdateWaypoint={handleUpdateWaypoint}
               onRemoveWaypoint={handleRemoveWaypoint}
             />
-          )}
+          </div>
 
-          {activeTab === 'checklists' && (
+          {/* TAB 4: RV Checklists */}
+          <div className={`${activeTab === 'checklist' ? 'flex' : 'hidden'} flex-1 h-full w-full overflow-y-auto`}>
             <ChecklistsTab
               departureTasks={departureTasks}
               arrivalTasks={arrivalTasks}
@@ -344,7 +413,7 @@ export default function App() {
               onClearDepartureTasks={() => setDepartureTasks(INITIAL_DEPARTURE_TASKS)}
               onClearArrivalTasks={() => setArrivalTasks(INITIAL_ARRIVAL_TASKS)}
             />
-          )}
+          </div>
         </main>
       </div>
 
