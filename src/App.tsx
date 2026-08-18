@@ -8,6 +8,7 @@ import { INITIAL_DEPARTURE_TASKS, INITIAL_ARRIVAL_TASKS } from './constants/chec
 import { fetchLiveWeatherForStops } from './services/weatherService';
 import { fetchRvSitePickerRecommendations } from './services/geminiService';
 import { calculateWaypointMetricsService } from './services/directionsService';
+import { AuthUser, signInWithGoogle, signOutUser, onAuthChange } from './services/authService';
 
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -24,6 +25,10 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 export default function App() {
   const [activeTab, setActiveTab] = useState<'intime' | 'router' | 'planner' | 'checklist'>('intime');
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+
+  // Authentication State
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // RV Profile State
   const [profile, setProfile] = useState<RvProfile>(() => {
@@ -94,6 +99,31 @@ export default function App() {
     error: null,
     results: null
   });
+
+  // Listen to Authentication State
+  useEffect(() => {
+    const unsubscribe = onAuthChange((currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSignIn = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
+      alert(err.message || "Failed to sign in with Google.");
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+    } catch (err: any) {
+      console.error("Sign Out Error:", err);
+    }
+  };
 
   // Dynamic Google Maps Script & FontAwesome Loader
   useEffect(() => {
@@ -341,8 +371,15 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
-      {/* Top Header */}
-      <Header profile={profile} onOpenProfile={() => setIsRvProfileOpen(true)} />
+      {/* Top Header with User Auth */}
+      <Header
+        profile={profile}
+        onOpenProfile={() => setIsRvProfileOpen(true)}
+        user={user}
+        onSignIn={handleSignIn}
+        onSignOut={handleSignOut}
+        isSyncing={isSyncing}
+      />
 
       {/* Main Content Layout */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
