@@ -127,7 +127,7 @@ const normalizeWaypoints = (parsed: any): any[] => {
   if (!parsed) return [];
   if (Array.isArray(parsed)) {
     if (parsed[0]?.waypoints && Array.isArray(parsed[0].waypoints)) return parsed[0].waypoints;
-    if (parsed[0]?.destination || parsed[0]?.origin) return parsed;
+    if (parsed[0]?.destination || parsed[0]?.origin || parsed[0]?.stops) return parsed;
   }
   if (parsed.waypoints && Array.isArray(parsed.waypoints)) return parsed.waypoints;
   if (parsed.itinerary && Array.isArray(parsed.itinerary)) return parsed.itinerary;
@@ -533,7 +533,7 @@ export default function App() {
     }
   }, [profile.heightFeet, profile.heightInches]);
 
-  // Live Weather Fetcher with Open-Meteo Direct Geocoding Fallback
+  // Live Weather Fetcher for Every Stop with Open-Meteo Direct Geocoding Fallback
   const fetchDestinationWeathers = useCallback(async () => {
     if (!itineraryWaypoints || itineraryWaypoints.length === 0) return;
 
@@ -969,7 +969,7 @@ export default function App() {
     });
   };
 
-  // Dedicated Robust Waypoint Route Calculation Engine
+  // Dedicated Robust Waypoint Route Calculation Engine with Accurate Multi-Stop Summation
   const calculateWaypointMetrics = useCallback((waypointId: number, waypointsOverride?: any[]) => {
     if (!window.google || !window.google.maps) return;
 
@@ -1083,7 +1083,7 @@ export default function App() {
     });
   }, [calculateWaypointMetrics]);
 
-  // Gemini AI Trip Plan Generator with Long-Distance Highway Transit Splitting & Time Zone Math
+  // Gemini AI Trip Plan Generator with Multi-Stop Nested Days & Dynamic Rig Profile Integration
   const handleGenerateAiTrip = async (e: React.FormEvent) => {
     e.preventDefault();
     const effectiveKey = geminiApiKey.trim();
@@ -1099,6 +1099,10 @@ export default function App() {
     try {
       localStorage.setItem('gemini_api_key', effectiveKey);
 
+      const combinedLen = profile.combinedLengthFeet || profile.lengthFeet;
+      const safeMpg = Number(profile.towingMpg) || 10;
+      const safeFuelRangeVal = safeMpg * 25;
+
       let userInstructions = "";
       if (aiInputMode === 'guided') {
         const rawDestInput = aiDestinations.trim() || "National Parks road trip";
@@ -1110,9 +1114,9 @@ export default function App() {
         
         let pacingText = "";
         if (aiEnforce333) {
-          pacingText = "STRICT PACING RULE: Follow the RV 3-3-3 Rule strictly (maximum 300 miles driving per day, arrive at campsite before 3:00 PM in daylight, and stay at least 3 nights at destination stops). For long cross-country transit corridors, stage 1-night overnight sleep stops along major highways.";
+          pacingText = `STRICT PACING RULE: Follow the RV 3-3-3 Rule (maximum ~300 miles driving per day, arrive at campsite before 3:00 PM in daylight, and stay at least 3 nights at destination stops). For cross-country highway travel, schedule 1-night overnight sleep stops (stayNights = 1) at the final stop of each day.`;
         } else {
-          pacingText = `UNCONSTRAINED PACING: No fixed 3-3-3 rules are required. Target max daily driving time of ~${aiMaxDailyHours} hours. For long-distance destinations, break transit into safe daily legs with 1-night sleep stops.`;
+          pacingText = `UNCONSTRAINED PACING: No fixed 3-3-3 rules required. Target max daily driving time of ~${aiMaxDailyHours} hours. For long-distance destinations, break transit into safe daily legs with 1-night sleep stops.`;
         }
 
         const roundTripInstruction = aiIsRoundTrip
@@ -1129,7 +1133,7 @@ export default function App() {
 
         userInstructions = `
           Plan an RV trip itinerary with the following parameters:
-          - Starting Location / Home: "${startText}"
+          - Starting Location / Home Base: "${startText}"
           - TARGET DESTINATIONS LIST (Note: Commas represent City, State names and MUST NOT be split):
 ${formattedDestList}
           - Sequence Directive: ${sequenceRule}
@@ -1139,10 +1143,12 @@ ${formattedDestList}
           - ${pacingText}
           - ${roundTripInstruction}
 
-          TIME ZONE & SLEEP SAFETY:
-          - Account for time zone shifts across Pacific (PT), Mountain (MT), Central (CT), and Eastern (ET).
-          - Ensure every travel day departs in the morning (8:00–9:00 AM) and arrives before 4:00–5:00 PM local time in daylight. NEVER schedule overnight driving.
-          - If the distance cannot fit within ${diffDays} calendar days given ~${aiMaxDailyHours} hrs/day, set "isFeasible": false and explain the required driving hours or extra days.
+          MULTI-STOP WAYPOINT SCENARIOS:
+          A single travel day (waypoint) should have multiple items in "stops" when:
+          1. Distance & Safe Fuel Range: On driving days > 4-5 hours (> ~250 miles), add a mid-day Stop 1 for fuel, lunch, and rest at an RV-friendly travel center before the evening campground (Stop 2).
+          2. Roadside Scenic Overlooks: Iconic must-see attractions along the highway with verified oversized RV parking suitable for a ${combinedLen}ft combined rig and easy highway on/off access.
+          3. Clustered Dream Destinations: Close-by attractions visited on the same day before heading to camp.
+          4. Pacing: Every intermediate travel day MUST have stayNights >= 1 at its final stop. Only the final return home has stayNights = 0.
         `;
       } else {
         const promptText = aiCustomPrompt.trim();
@@ -1158,32 +1164,37 @@ ${formattedDestList}
 
           CUSTOM PROMPT DIRECTIVES:
           1. Check for Round-Trip intent keywords ("back home", "and back", "return", "round trip", "to X and back"). When detected, plan outbound transit legs, destination stays, return transit legs, and end with a final return to the starting origin with "isHomeReturn": true and "stayNights": 0.
-          2. Check for Conditional Time Budget phrases ("unless impossible in N days", "within N days"). Calculate total round-trip miles. If a strict cap (e.g. 5 hrs/day) is mathematically impossible within the budget, scale up daily driving to realistic daylight hours (~6.5–7.5 hrs/day over enough driving days) to satisfy the user's hard calendar limit without driving overnight, and explain this scaling in the summary.
+          2. Check for Conditional Time Budget phrases ("unless impossible in N days", "within N days"). Calculate total round-trip distance. If a strict cap (e.g. 5 hrs/day) is mathematically impossible within the budget, scale up daily driving to realistic daylight hours (~6.5–7.5 hrs/day over enough driving days) to satisfy the user's hard calendar limit without driving overnight, and explain this scaling in the summary.
           3. Account for Time Zone transitions (PT -> MT -> CT -> ET) and ensure all arrivals occur in daylight before 4:30 PM local time.
+          4. When intermediate fuel breaks, lunch stops, or roadside scenic attractions (with oversize RV parking for a ${combinedLen}ft rig) occur on the same day, group them as nested items inside that day's "stops" array, with the evening campground as the final stop where the traveler stays for M nights (stayNights >= 1).
         `;
       }
 
-      const safeMpg = Number(profile.towingMpg) || 10;
       const systemPrompt = `
         You are RV SafePath AI Copilot, an expert RV travel planning assistant.
         
-        USER RIG & STARTING ORIGIN:
+        USER RIG SPECS (DYNAMICALLY INJECTED FROM ACTIVE PROFILE):
         - Starting Origin / Home: ${aiStartLocation || userLocationName}
         - RV Type: ${profile.rvType}
-        - Height Clearance: ${profile.heightFeet} ft ${profile.heightInches} in (MANDATORY: Ensure all roads and campgrounds accommodate this clearance)
-        - Combined Driving Length: ${profile.combinedLengthFeet || profile.lengthFeet} ft (Ensure campsite pads and pull-through access)
+        - Combined Driving Length: ${combinedLen} ft (Ensure all stops and campsites accommodate >= ${combinedLen}ft)
+        - Height Clearance: ${profile.heightFeet} ft ${profile.heightInches} in (MANDATORY: Ensure all routes avoid low clearance bridges and low tree overhangs)
         - Gross Weight: ${profile.weightLbs.toLocaleString()} lbs
-        - Towing Fuel Economy: ${safeMpg} MPG (~${safeMpg * 25} miles between fuel fill-ups)
+        - Towing Fuel Economy: ${safeMpg} MPG (Safe towing fuel range: ~${safeFuelRangeVal} miles between fill-ups)
         - Electrical Rating: ${profile.ampRating}
         - Minimum Hookup: ${profile.minHookup}
         - Propane Setup: ${profile.propaneStyle} (${profile.propaneCount} x ${profile.propaneLb} lbs)
+        - Towing Vehicle Setup: ${profile.towSetup}
+        - Active Memberships: ${profile.memberships.join(', ') || 'None'}
 
         CRITICAL RV ROUTING & SAFETY LAWS:
-        1. MANDATORY HIGHWAY TRANSIT CHUNKING: No single waypoint or driving day may exceed the user's Max Daily Driving Hours (typically ~250-350 miles max for RV towing). If the distance to the destination is long (e.g. Bellevue to Denver ~1,300 miles), you MUST break the journey into consecutive daily transit legs with 1-night overnight stays (stayNights: 1) in well-known RV-friendly towns along major highway corridors (e.g., I-90, I-84, I-15, I-80, I-25).
-        2. DAYLIGHT DRIVING & SLEEP: All daily driving legs must depart between 8:00 AM - 9:00 AM and arrive at camp before 4:00 PM - 5:00 PM in daylight. Under NO circumstances should any leg drive overnight or arrive past sunset (NEVER at 1 AM, 2 AM, or 3 AM).
-        3. TIME ZONE SHIFTS: Account for US/Canada time zone crossings (PT -> MT -> CT -> ET). Eastbound loses 1 hr (+1 hr local clock), Westbound gains 1 hr (-1 hr local clock). Ensure local arrival is still before 4:00 PM local time and explicitly note time zone changes in 'notes' (e.g., '⏰ Time zone shift: Pacific to Mountain (+1 hr). Arriving ~3:30 PM MT').
-        4. ROUND-TRIP & HOME RETURN INTENT: Scan the user's prompt for phrases like 'back home', 'and back', 'return', 'round trip', 'to X and back'. When present, you MUST plan a complete round trip starting at the user's origin, visiting destinations, and scheduling return transit legs back to the starting origin. Mark the final waypoint with 'isHomeReturn': true and 'stayNights': 0.
-        5. TIME-BUDGET MATH & CONDITIONAL CONSTRAINTS: If the user states a constraint like 'max 5 hours unless impossible in 7 days', calculate the total round-trip distance. If 5 hrs/day is mathematically impossible within the budget (e.g. 2,600 miles total), scale up daily driving (e.g. to ~6.5-7.5 hrs/day) to fit the hard calendar deadline while still keeping drives safely within daylight hours (8 AM to 4 PM), and explain this scaling clearly in 'summary' and 'feasibilityWarning'.
+        1. MANDATORY MULTI-STOP WAYPOINT STRUCTURE:
+           - A Waypoint represents ONE travel/overnight day.
+           - A Waypoint starts from "origin" and contains an array of "stops": [ Stop 1, Stop 2, ..., Stop K ].
+           - Middle Stops (Stop 1 to Stop K-1): Daytime pauses for fuel, lunch, or must-see scenic overlooks with verified oversized RV parking suitable for a ${combinedLen}ft rig.
+           - Last Stop (Stop K): The evening destination campground where the traveler checks in and stays for M nights ("stayNights" = M, where M >= 1 for all intermediate days).
+           - Only the final waypoint returning the traveler home has "stayNights" = 0 and "isHomeReturn" = true.
+        2. DAYLIGHT DRIVING ONLY: All daily driving legs must depart between 8:00 AM - 9:00 AM and arrive at the final evening camp before 4:00 PM - 5:00 PM in daylight. NEVER schedule overnight driving or late night arrivals.
+        3. TIME ZONE SHIFTS: Account for US/Canada time zone crossings (PT -> MT -> CT -> ET). Eastbound loses 1 hr (+1 hr local clock), Westbound gains 1 hr (-1 hr local clock). Ensure local arrival is still before 4:30 PM local time and explicitly note time zone changes in 'notes'.
 
         OUTPUT FORMAT REQUIREMENTS:
         You MUST respond with a valid JSON object strictly matching this schema:
@@ -1195,12 +1206,22 @@ ${formattedDestList}
           "waypoints": [
             {
               "origin": "Starting City, State",
-              "destination": "Destination Place Name, City, State",
               "stayNights": 1,
               "isHomeReturn": false,
-              "depHour": 8,
-              "depMin": 0,
-              "depAmPm": "AM",
+              "stops": [
+                {
+                  "destination": "Daytime Stop Name, City, State",
+                  "depHour": 8,
+                  "depMin": 0,
+                  "depAmPm": "AM"
+                },
+                {
+                  "destination": "Overnight Campground Name, City, State",
+                  "depHour": 13,
+                  "depMin": 0,
+                  "depAmPm": "PM"
+                }
+              ],
               "notes": "Route highlights, RV site recommendations, time zone notes."
             }
           ]
@@ -1283,22 +1304,22 @@ ${formattedDestList}
 
     const formattedWaypoints = generatedPlanPreview.waypoints.map((wp: any, idx: number) => {
       const isFinalWaypoint = idx === totalWaypointsCount - 1;
-      const wpDest = wp.destination?.trim() || '';
-      const wpOrigin = wp.origin?.trim() || runningOrigin;
-      runningOrigin = wpDest || runningOrigin; // chain consecutive origins
-
-      const isReturningHome = wp.isHomeReturn === true || (isFinalWaypoint && (aiIsRoundTrip || wpDest.toLowerCase().includes((aiStartLocation || userLocationName).toLowerCase().split(',')[0])));
-      const stayNightsValue = isReturningHome ? 0 : (wp.stayNights !== undefined ? Math.max(0, parseInt(wp.stayNights, 10) || 0) : 1);
-
-      return {
-        id: Date.now() + idx * 20,
-        origin: wpOrigin,
-        isExpanded: true,
-        isHomeReturn: isReturningHome,
-        stops: [
-          {
-            id: Date.now() + idx * 20 + 1,
-            destination: wpDest,
+      
+      const stopsList = Array.isArray(wp.stops) && wp.stops.length > 0
+        ? wp.stops.map((s: any, sIdx: number) => ({
+            id: Date.now() + idx * 50 + sIdx,
+            destination: s.destination?.trim() || '',
+            depHour: s.depHour !== undefined ? s.depHour : (sIdx === 0 ? 8 : 13),
+            depMin: s.depMin !== undefined ? s.depMin : 0,
+            depAmPm: s.depAmPm || (sIdx === 0 ? 'AM' : 'PM'),
+            estMiles: 0,
+            estHours: 0,
+            arrivalHour: 15,
+            arrivalMinute: 0
+          }))
+        : [{
+            id: Date.now() + idx * 50,
+            destination: wp.destination?.trim() || '',
             depHour: wp.depHour !== undefined ? wp.depHour : 8,
             depMin: wp.depMin !== undefined ? wp.depMin : 0,
             depAmPm: wp.depAmPm || 'AM',
@@ -1306,8 +1327,21 @@ ${formattedDestList}
             estHours: 0,
             arrivalHour: 15,
             arrivalMinute: 0
-          }
-        ],
+          }];
+
+      const wpOrigin = wp.origin?.trim() || runningOrigin;
+      const finalStopDest = stopsList[stopsList.length - 1].destination;
+      runningOrigin = finalStopDest || runningOrigin; // chain consecutive origins to last stop
+
+      const isReturningHome = wp.isHomeReturn === true || (isFinalWaypoint && (aiIsRoundTrip || finalStopDest.toLowerCase().includes((aiStartLocation || userLocationName).toLowerCase().split(',')[0])));
+      const stayNightsValue = isReturningHome ? 0 : (wp.stayNights !== undefined ? Math.max(0, parseInt(wp.stayNights, 10) || 0) : 1);
+
+      return {
+        id: Date.now() + idx * 50,
+        origin: wpOrigin,
+        isExpanded: true,
+        isHomeReturn: isReturningHome,
+        stops: stopsList,
         notes: wp.notes || '',
         stayNights: stayNightsValue,
         estMiles: 0,
@@ -1333,7 +1367,7 @@ ${formattedDestList}
   const handleOpenSitePicker = async (waypointId: number, stopId: number, destination: string, stayNights: number) => {
     const cleanDest = destination?.trim();
     if (!cleanDest) {
-      setNoticeMessage("Please enter a destination place (e.g. Glacier NP, MT or Hope, BC) before picking RV sites.");
+      setNoticeMessage("Please enter a destination place before picking RV sites.");
       return;
     }
 
@@ -1859,7 +1893,7 @@ ${formattedDestList}
                   <button
                     onClick={handleLocateGPS}
                     title="Use GPS Location"
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1.5"
                   >
                     <i className="fa-solid fa-crosshairs"></i>
                     <span className="hidden sm:inline">GPS</span>
@@ -2130,7 +2164,7 @@ ${formattedDestList}
                 <h2 className="text-base sm:text-xl font-bold text-slate-100 flex items-center gap-2">
                   <i className="fa-solid fa-calendar-days text-emerald-400"></i> Multi-Day RV Trip Itinerary
                 </h2>
-                <p className="text-[11px] sm:text-xs text-slate-400">Paced with daylight driving, real-time weather &amp; time zone shifts.</p>
+                <p className="text-[11px] sm:text-xs text-slate-400">Multi-stop daily pacing, daylight safety, live weather &amp; time zone shifts.</p>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -2240,7 +2274,7 @@ ${formattedDestList}
                             <span className={`${badgeBgClass} text-[11px] font-bold px-2 py-0.5 rounded`}>DAY {currentDisplayDay}</span>
                           </button>
                           <span className="text-xs text-slate-300 font-medium">
-                            Distance: <strong className="text-emerald-400">{wp.estMiles} mi</strong> | Arrival Time: <strong className={breaksTime ? 'text-amber-400 font-bold' : 'text-emerald-400'}>{formattedArrTime}</strong>
+                            Day Distance: <strong className="text-emerald-400">{wp.estMiles} mi</strong> | Camp Arrival: <strong className={breaksTime ? 'text-amber-400 font-bold' : 'text-emerald-400'}>{formattedArrTime}</strong>
                           </span>
                         </div>
 
@@ -2253,7 +2287,7 @@ ${formattedDestList}
                             onChange={(e) => updateWaypoint(wp.id, 'stayNights', Math.max(0, parseInt(e.target.value, 10) || 0))} 
                             className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-center text-slate-200 focus:outline-none focus:border-emerald-500" 
                           />
-                          <span className="text-slate-400">{wp.stayNights === 0 ? 'Nights (Transit/End)' : 'Nights'}</span>
+                          <span className="text-slate-400">{wp.stayNights === 0 ? 'Nights (Transit/End)' : `${wp.stayNights} Night${wp.stayNights > 1 ? 's' : ''}`}</span>
 
                           <button onClick={() => removeTripDay(wp.id)} className="text-slate-400 hover:text-red-400 p-1.5 ml-1" title="Delete Day">
                             <i className="fa-solid fa-trash"></i>
@@ -2277,7 +2311,9 @@ ${formattedDestList}
 
                           <div className="space-y-3 pl-2 sm:pl-4 border-l-2 border-slate-700/60">
                             <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Destination Stops &amp; Weather</span>
+                              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                                Stops &amp; Daytime Itinerary ({wp.stops?.length || 1})
+                              </span>
                               <button 
                                 onClick={() => addStopToWaypoint(wp.id)}
                                 className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg"
@@ -2293,17 +2329,28 @@ ${formattedDestList}
                               const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
                               const weatherInfo = stop.destination ? destinationWeathers[stop.destination] : null;
 
-                              // Detection whether this stop represents the final return home
+                              const isLastStopOfWaypoint = sIdx === (arr.length - 1);
                               const isLastWaypoint = wIdx === itineraryWaypoints.length - 1;
                               const firstOrigin = (itineraryWaypoints[0]?.origin || aiStartLocation || userLocationName || '').toLowerCase().split(',')[0].trim();
                               const destCity = (stop.destination || '').toLowerCase().split(',')[0].trim();
                               const isMatchingHomeOrigin = firstOrigin && destCity && (firstOrigin.includes(destCity) || destCity.includes(firstOrigin));
-                              const isHomeReturnStop = wp.isHomeReturn === true || (isLastWaypoint && (wp.stayNights === 0 || aiIsRoundTrip || isMatchingHomeOrigin));
+                              const isHomeReturnStop = wp.isHomeReturn === true || (isLastWaypoint && isLastStopOfWaypoint && (wp.stayNights === 0 || isMatchingHomeOrigin));
 
                               return (
                                 <div key={stop.id} className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
                                   <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-emerald-400">Stop {sIdx + 1}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[11px] font-bold text-emerald-400">Stop {sIdx + 1}</span>
+                                      {isLastStopOfWaypoint ? (
+                                        <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-semibold">
+                                          🏕️ Overnight Destination ({stayCount}N)
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded font-medium">
+                                          ☕ Mid-day / Fuel Pause
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-[11px] text-slate-400">
                                         Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}</strong>
@@ -2323,13 +2370,15 @@ ${formattedDestList}
                                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                                     <div className="sm:col-span-12 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                                       <div className="flex-1">
-                                        <label className="block text-[10px] text-slate-400 mb-1">Destination Place</label>
+                                        <label className="block text-[10px] text-slate-400 mb-1">
+                                          {isLastStopOfWaypoint ? "Evening Destination (Campground / Hotel)" : "Daytime Stop (Fuel / Lunch / Scenic)"}
+                                        </label>
                                         <input 
                                           ref={(el) => setupAutocompleteForInput(el, wp.id, 'destination', stop.id)}
                                           type="text" 
                                           value={stop.destination} 
                                           onChange={(e) => updateStop(wp.id, stop.id, 'destination', e.target.value)}
-                                          placeholder="Destination place..." 
+                                          placeholder={isLastStopOfWaypoint ? "Evening destination or RV park..." : "Lunch, gas or scenic stop..."} 
                                           className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
                                         />
                                       </div>
@@ -2339,7 +2388,7 @@ ${formattedDestList}
                                           <label className="block text-[10px] text-slate-400 mb-1">Departure Time</label>
                                           <div className="flex items-center gap-1">
                                             <select 
-                                              value={stop.depHour !== undefined ? stop.depHour : 8} 
+                                              value={stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 13)} 
                                               onChange={(e) => updateStop(wp.id, stop.id, 'depHour', parseInt(e.target.value, 10))}
                                               className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                                             >
@@ -2389,13 +2438,13 @@ ${formattedDestList}
                                     </div>
                                   </div>
 
-                                  {/* Stop Action Bar: Weather Tag + RV Site Picker Button */}
+                                  {/* Stop Action Bar: Individual Weather Tag + RV Site Picker (Last Stop Only) */}
                                   <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] flex items-center justify-between flex-wrap gap-2">
                                     <div className="flex items-center gap-2 text-slate-300 flex-wrap">
                                       {stop.destination && (
                                         <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700">
                                           <i className="fa-solid fa-cloud-sun text-sky-400"></i>
-                                          <span>Weather: <strong>{weatherInfo ? `${weatherInfo.temp}, ${weatherInfo.condition}` : 'Fetching weather...'}</strong></span>
+                                          <span>Local Weather: <strong>{weatherInfo ? `${weatherInfo.temp}, ${weatherInfo.condition}` : 'Fetching live weather...'}</strong></span>
                                         </div>
                                       )}
 
@@ -2407,13 +2456,13 @@ ${formattedDestList}
                                       )}
                                     </div>
 
-                                    {/* RV Site Picker Button - Hidden for Final Home Return Stop */}
-                                    {!isHomeReturnStop && (
+                                    {/* RV Site Picker Button: Visible ONLY for the Final Overnight Stop of the Waypoint */}
+                                    {isLastStopOfWaypoint && !isHomeReturnStop && stayCount > 0 && (
                                       <button
                                         type="button"
                                         onClick={() => handleOpenSitePicker(wp.id, stop.id, stop.destination, stayCount)}
                                         className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
-                                        title="Compare and pick top RV campgrounds tailored to your rig"
+                                        title={`Compare and pick top RV campgrounds in ${stop.destination}`}
                                       >
                                         <i className="fa-solid fa-campground text-amber-300"></i>
                                         <span>RV Site Picker</span>
@@ -2441,7 +2490,7 @@ ${formattedDestList}
                           e.target.style.height = 'auto';
                           e.target.style.height = `${Math.max(40, e.target.scrollHeight)}px`;
                         }}
-                        placeholder="Trip notes, time zone shifts & RV site details..." 
+                        placeholder="Trip notes, fuel stops, time zone shifts & RV site details..." 
                         className="w-full bg-slate-900/60 border border-slate-700/60 rounded-lg p-2.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500 overflow-hidden resize-none leading-relaxed transition-all"
                       ></textarea>
                     </div>
@@ -2552,7 +2601,7 @@ ${formattedDestList}
                   <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
                     RV SafePath AI Copilot <span className="text-[10px] bg-sky-500/20 text-sky-300 font-semibold px-2 py-0.5 rounded-full border border-sky-500/30">Gemini Powered</span>
                   </h3>
-                  <p className="text-xs text-slate-400">Intelligent itinerary planner with daylight pacing &amp; time zone shifts.</p>
+                  <p className="text-xs text-slate-400">Multi-stop daily pacing, daylight safety &amp; dynamic rig profile matching.</p>
                 </div>
               </div>
               <button onClick={() => { setIsAiModalOpen(false); setGeneratedPlanPreview(null); }} className="text-slate-400 hover:text-slate-200 text-lg p-1">
@@ -2728,7 +2777,7 @@ ${formattedDestList}
                         required
                       />
                       <p className="text-[11px] text-slate-400 italic">
-                        The AI will automatically detect round-trip intents ("and back home"), calculate distance math, and stage daylight transit stops.
+                        The AI automatically detects round-trip intents ("and back home"), groups daytime breaks as stops, and calculates time-budget pacing.
                       </p>
                     </div>
                   )}
@@ -2780,7 +2829,7 @@ ${formattedDestList}
                       {isGeneratingTrip ? (
                         <>
                           <i className="fa-solid fa-circle-notch animate-spin"></i>
-                          <span>Planning Daylight Safe Route...</span>
+                          <span>Planning Multi-Stop Route...</span>
                         </>
                       ) : (
                         <>
@@ -2819,8 +2868,11 @@ ${formattedDestList}
                         const previewStay = wp.stayNights !== undefined ? wp.stayNights : 1;
                         previewRunningDay += (previewStay > 0 ? previewStay : 1);
 
+                        const stops = wp.stops || [{ destination: wp.destination }];
+                        const finalStop = stops[stops.length - 1];
+
                         return (
-                          <div key={idx} className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3 space-y-1 text-xs">
+                          <div key={idx} className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3 space-y-1.5 text-xs">
                             <div className="flex justify-between items-center">
                               <span className="font-bold text-emerald-400">DAY {previewDay}</span>
                               <span className="text-slate-400 bg-slate-800 px-2 py-0.5 rounded text-[10px]">
@@ -2828,8 +2880,16 @@ ${formattedDestList}
                               </span>
                             </div>
                             <div className="text-slate-200">
-                              <strong className="text-slate-400">From:</strong> {wp.origin} &rarr; <strong className="text-emerald-300">To:</strong> {wp.destination}
+                              <strong className="text-slate-400">From:</strong> {wp.origin} &rarr; <strong className="text-emerald-300">Overnight Destination:</strong> {finalStop.destination}
                             </div>
+                            {stops.length > 1 && (
+                              <div className="text-[11px] text-slate-400 pl-2 border-l border-slate-700 space-y-0.5">
+                                <span className="font-semibold text-slate-300">Includes Daytime Stops:</span>
+                                {stops.slice(0, -1).map((s: any, sIdx: number) => (
+                                  <div key={sIdx}>• {s.destination}</div>
+                                ))}
+                              </div>
+                            )}
                             {wp.notes && (
                               <div className="text-[11px] text-slate-400 italic pt-0.5">{wp.notes}</div>
                             )}
@@ -2840,7 +2900,7 @@ ${formattedDestList}
                   </div>
 
                   <div className="bg-slate-900/50 p-2.5 rounded-xl border border-slate-700/60 text-[11px] text-slate-400">
-                    <i className="fa-solid fa-info-circle text-sky-400 mr-1"></i> Once applied, all legs will calculate exact Google Maps miles, daylight arrival times, and live destination weather.
+                    <i className="fa-solid fa-info-circle text-sky-400 mr-1"></i> Once applied, all legs will calculate exact Google Maps miles, daylight arrival times, and live weather for every stop.
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
