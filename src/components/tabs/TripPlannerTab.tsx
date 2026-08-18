@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay } from '../../utils/dateUtils';
@@ -160,7 +160,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
         </div>
       </div>
 
-      {/* Waypoints List & Original Dual-Action Empty State */}
+      {/* Waypoints List & Dual-Action Empty State */}
       <div className="space-y-3 sm:space-y-4">
         {waypoints.length === 0 ? (
           <div className="text-center py-12 px-4 bg-slate-800/40 rounded-2xl border border-slate-700/60 space-y-4 max-w-lg mx-auto">
@@ -270,6 +270,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                       </div>
 
                       {(wp.stops || []).map((stop, sIdx, arr) => {
+                        const prevLoc = sIdx === 0 ? wp.origin : arr[sIdx - 1].destination;
                         const stopArrH = stop.arrivalHour !== undefined ? stop.arrivalHour : 15;
                         const stopArrM = stop.arrivalMinute !== undefined ? stop.arrivalMinute : 0;
                         const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
@@ -307,106 +308,145 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              <input 
-                                ref={(el) => {
-                                  inputsRef.current[`stop_${wp.id}_${stop.id}`] = el;
-                                  setupPlaceAutocomplete(el, (addr) => {
-                                    onUpdateWaypoint(wp.id, (prev) => ({
-                                      ...prev,
-                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
-                                    }));
-                                  });
-                                }}
-                                type="text" 
-                                value={stop.destination} 
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  onUpdateWaypoint(wp.id, (prev) => ({
-                                    ...prev,
-                                    stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val } : s)
-                                  }));
-                                }}
-                                placeholder={isLastStopOfWaypoint ? "Campground or Destination..." : "Scenic overlook, Rest area, Fuel..."} 
-                                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
-                              />
+                            {/* Destination Input, Departure Time Selects & Navigate Button */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                              <div className="sm:col-span-12 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                                <div className="flex-1">
+                                  <label className="block text-[10px] text-slate-400 mb-1">
+                                    {isLastStopOfWaypoint ? "Evening Destination (Campground / Hotel)" : "Daytime Stop (Fuel / Lunch / Scenic)"}
+                                  </label>
+                                  <input 
+                                    ref={(el) => {
+                                      inputsRef.current[`stop_${wp.id}_${stop.id}`] = el;
+                                      setupPlaceAutocomplete(el, (addr) => {
+                                        onUpdateWaypoint(wp.id, (prev) => ({
+                                          ...prev,
+                                          stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
+                                        }));
+                                      });
+                                    }}
+                                    type="text" 
+                                    value={stop.destination} 
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      onUpdateWaypoint(wp.id, (prev) => ({
+                                        ...prev,
+                                        stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val } : s)
+                                      }));
+                                    }}
+                                    placeholder={isLastStopOfWaypoint ? "Evening destination or RV park..." : "Lunch, gas or scenic stop..."} 
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                                  />
+                                </div>
 
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="text-[10px] text-slate-400">Depart:</span>
-                                <input 
-                                  type="number" 
-                                  min="1" 
-                                  max="12" 
-                                  value={stop.depHour} 
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value, 10) || 8;
-                                    onUpdateWaypoint(wp.id, (prev) => ({
-                                      ...prev,
-                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, depHour: val } : s)
-                                    }));
-                                  }}
-                                  className="w-10 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200" 
-                                />
-                                <span className="text-slate-500">:</span>
-                                <input 
-                                  type="number" 
-                                  min="0" 
-                                  max="59" 
-                                  step="5"
-                                  value={stop.depMin} 
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value, 10) || 0;
-                                    onUpdateWaypoint(wp.id, (prev) => ({
-                                      ...prev,
-                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, depMin: val } : s)
-                                    }));
-                                  }}
-                                  className="w-10 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200" 
-                                />
-                                <button 
-                                  onClick={() => {
-                                    onUpdateWaypoint(wp.id, (prev) => ({
-                                      ...prev,
-                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, depAmPm: s.depAmPm === 'AM' ? 'PM' : 'AM' } : s)
-                                    }));
-                                  }}
-                                  className="px-1.5 py-1 bg-slate-800 border border-slate-700 rounded text-[10px] text-emerald-400 font-bold"
-                                >
-                                  {stop.depAmPm || 'AM'}
-                                </button>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div>
+                                    <label className="block text-[10px] text-slate-400 mb-1">Departure Time</label>
+                                    <div className="flex items-center gap-1">
+                                      <select 
+                                        value={stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 13)} 
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value, 10);
+                                          onUpdateWaypoint(wp.id, (prev) => ({
+                                            ...prev,
+                                            stops: prev.stops.map(s => s.id === stop.id ? { ...s, depHour: val } : s)
+                                          }));
+                                        }}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                                      >
+                                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
+                                          <option key={h} value={h}>{h}</option>
+                                        ))}
+                                      </select>
+                                      <span className="text-slate-400 font-bold">:</span>
+                                      <select 
+                                        value={stop.depMin !== undefined ? stop.depMin : 0} 
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value, 10);
+                                          onUpdateWaypoint(wp.id, (prev) => ({
+                                            ...prev,
+                                            stops: prev.stops.map(s => s.id === stop.id ? { ...s, depMin: val } : s)
+                                          }));
+                                        }}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                                      >
+                                        {[0, 15, 30, 45].map(m => (
+                                          <option key={m} value={m}>{m < 10 ? `0${m}` : m}</option>
+                                        ))}
+                                      </select>
+                                      <div className="flex bg-slate-900 border border-slate-700 rounded-lg overflow-hidden shrink-0">
+                                        <button 
+                                          type="button" 
+                                          onClick={() => {
+                                            onUpdateWaypoint(wp.id, (prev) => ({
+                                              ...prev,
+                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, depAmPm: 'AM' } : s)
+                                            }));
+                                          }} 
+                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${(!stop.depAmPm || stop.depAmPm === 'AM') ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                        >
+                                          AM
+                                        </button>
+                                        <button 
+                                          type="button" 
+                                          onClick={() => {
+                                            onUpdateWaypoint(wp.id, (prev) => ({
+                                              ...prev,
+                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, depAmPm: 'PM' } : s)
+                                            }));
+                                          }} 
+                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${stop.depAmPm === 'PM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                        >
+                                          PM
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <a 
+                                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(prevLoc || '')}&destination=${encodeURIComponent(stop.destination || '')}&travelmode=driving`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-[11px] flex items-center gap-1.5 transition shadow shrink-0 self-end"
+                                    title="Navigate"
+                                  >
+                                    <i className="fa-solid fa-location-arrow"></i> Navigate
+                                  </a>
+                                </div>
                               </div>
                             </div>
 
-                            {/* Weather Card */}
-                            {weatherInfo && (
-                              <div className={`p-2 rounded-lg text-[11px] border flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 ${weatherInfo.isFreezeWarning ? 'bg-blue-950/50 border-blue-500/50 text-blue-200' : weatherInfo.isWindWarning ? 'bg-amber-950/50 border-amber-500/50 text-amber-200' : 'bg-slate-950/60 border-slate-700/60 text-slate-300'}`}>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-base">{weatherInfo.icon}</span>
-                                  <div>
-                                    <span className="font-semibold">{weatherInfo.condition}</span> | High: <strong className="text-slate-100">{weatherInfo.tempHigh}°F</strong> / Low: <strong className="text-slate-100">{weatherInfo.tempLow}°F</strong> | Wind: <strong className="text-slate-100">{weatherInfo.windSpeed} mph</strong>
+                            {/* Stop Action Bar: Compact Weather Label Pill + RV Site Picker Button */}
+                            <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2 text-slate-300 flex-wrap">
+                                {stop.destination && (
+                                  <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
+                                    <i className="fa-solid fa-cloud-sun text-sky-400"></i>
+                                    <span>Local Weather: <strong>{weatherInfo ? `${weatherInfo.temp}, ${weatherInfo.condition}` : 'Fetching live weather...'}</strong></span>
                                   </div>
-                                </div>
-                                {(weatherInfo.isFreezeWarning || weatherInfo.isWindWarning) && (
-                                  <div className="flex items-center gap-1 font-bold text-[10px] uppercase">
-                                    <i className="fa-solid fa-triangle-exclamation text-amber-400"></i>
-                                    <span>{weatherInfo.isFreezeWarning ? 'Freeze Warning' : 'Wind Advisory'}</span>
+                                )}
+
+                                {weatherInfo && weatherInfo.hazardAlert && (
+                                  <div className="bg-red-500/20 border border-red-500/40 text-red-300 px-2 py-1 rounded font-bold flex items-center gap-1.5 animate-pulse">
+                                    <i className="fa-solid fa-triangle-exclamation"></i>
+                                    <span>{weatherInfo.hazardAlert}</span>
                                   </div>
                                 )}
                               </div>
-                            )}
 
-                            {/* Campsite Recommendation Trigger */}
-                            {isLastStopOfWaypoint && stop.destination && (
-                              <div className="flex justify-end pt-1">
-                                <button 
+                              {/* RV Site Picker Button for Final Overnight Stop */}
+                              {isLastStopOfWaypoint && stop.destination && stayCount > 0 && (
+                                <button
+                                  type="button"
                                   onClick={() => onOpenSitePicker(stop.destination, stayCount, wp.id, sIdx)}
-                                  className="text-[11px] bg-slate-800 hover:bg-slate-700 border border-emerald-500/40 text-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition font-medium"
+                                  className="bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
+                                  title={`Compare and pick top RV campgrounds in ${stop.destination}`}
                                 >
-                                  <i className="fa-solid fa-magnifying-glass text-emerald-400"></i>
-                                  <span>Find Verified RV Sites for {profile.lengthFeet}ft Rig</span>
+                                  <i className="fa-solid fa-campground text-amber-300"></i>
+                                  <span>RV Site Picker</span>
                                 </button>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         );
                       })}
