@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { RvProfile } from '../../types/rv';
 import { AiPlanPreview } from '../../types/itinerary';
 import { calculateTripDurationAndSeason } from '../../utils/dateUtils';
+import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
 import { generateAiTripPlan } from '../../services/geminiService';
 
 interface AiCopilotModalProps {
@@ -88,8 +89,9 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
       (inputEl as any).__autocompleteAttached = true;
       autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace();
-        if (place && place.formatted_address) {
-          setAiStartLocation(place.formatted_address);
+        const addr = formatResolvedPlaceAddress(place);
+        if (addr) {
+          setAiStartLocation(addr);
         }
       });
     } catch (e) {
