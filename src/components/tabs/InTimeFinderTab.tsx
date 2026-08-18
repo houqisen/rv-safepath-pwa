@@ -9,8 +9,6 @@ interface InTimeFinderTabProps {
   userCoords: { lat: number; lng: number };
   userLocationName: string;
   isGoogleLoaded: boolean;
-  mapInstance: google.maps.Map | null;
-  setMapInstance: (map: google.maps.Map | null) => void;
   setUserCoords: (coords: { lat: number; lng: number }) => void;
   setUserLocationName: (name: string) => void;
 }
@@ -20,8 +18,6 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
   userCoords,
   userLocationName,
   isGoogleLoaded,
-  mapInstance,
-  setMapInstance,
   setUserCoords,
   setUserLocationName
 }) => {
@@ -34,6 +30,7 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const googleMapInstance = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const locationInputRef = useRef<HTMLInputElement>(null);
@@ -44,8 +41,8 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
   useEffect(() => {
     if (!isGoogleLoaded || !window.google || !window.google.maps || !mapContainerRef.current) return;
 
-    if (!mapInstance) {
-      const map = new window.google.maps.Map(mapContainerRef.current, {
+    if (!googleMapInstance.current) {
+      googleMapInstance.current = new window.google.maps.Map(mapContainerRef.current, {
         center: userCoords,
         zoom: 13,
         styles: DARK_MAP_STYLE,
@@ -53,9 +50,8 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
         streetViewControl: false,
         fullscreenControl: false
       });
-      setMapInstance(map);
     } else {
-      mapInstance.setCenter(userCoords);
+      googleMapInstance.current.setCenter(userCoords);
     }
   }, [isGoogleLoaded, userCoords]);
 
@@ -77,16 +73,16 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
           setUserCoords({ lat: newLat, lng: newLng });
           setUserLocationName(addr);
           setManualInputText(addr);
-          if (mapInstance) {
-            mapInstance.panTo({ lat: newLat, lng: newLng });
-            mapInstance.setZoom(13);
+          if (googleMapInstance.current) {
+            googleMapInstance.current.panTo({ lat: newLat, lng: newLng });
+            googleMapInstance.current.setZoom(13);
           }
         }
       });
     } catch (e) {
       console.error("Autocomplete setup error:", e);
     }
-  }, [isGoogleLoaded, mapInstance]);
+  }, [isGoogleLoaded]);
 
   // Search Places
   const fetchPlaces = async (lat: number, lng: number, filterToUse: PlaceCategory) => {
@@ -108,59 +104,115 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
     }
   }, [isGoogleLoaded, userCoords, activeFilter, profile]);
 
-  // Update Markers
+  // Render SVG Map Markers & InfoWindows
   useEffect(() => {
-    if (!mapInstance || !window.google) return;
+    if (!isGoogleLoaded || !googleMapInstance.current || !window.google) return;
 
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
-    // User Location Marker
-    if (!userMarkerRef.current) {
-      userMarkerRef.current = new window.google.maps.Marker({
-        position: userCoords,
-        map: mapInstance,
-        title: "Your Location",
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#38bdf8",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2
-        }
-      });
-    } else {
-      userMarkerRef.current.setPosition(userCoords);
-      userMarkerRef.current.setMap(mapInstance);
-    }
+    const filtered = placesList.filter(item => {
+      if (item.distanceMiles > 20.0) return false;
+      if (pullThroughOnly && !item.pullThrough) return false;
+      if (fullHookupOnly && item.category === 'campground' && !item.fullHookup) return false;
+      return true;
+    });
 
-    // Facilities Markers
-    placesList.forEach(item => {
-      const markerColor = item.category === 'fuel' ? '#f59e0b' : item.category === 'propane' ? '#ea580c' : item.category === 'campground' ? '#10b981' : item.category === 'dump' ? '#ef4444' : '#6366f1';
+    if (userMarkerRef.current) userMarkerRef.current.setMap(null);
+
+    userMarkerRef.current = new window.google.maps.Marker({
+      position: userCoords,
+      map: googleMapInstance.current,
+      title: "Your Location",
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 9,
+        fillColor: "#38bdf8",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 3
+      }
+    });
+
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend(userCoords);
+
+    const getPinIcon = (cat: string) => {
+      let color = '#f59e0b';
+      let svg = '';
+      if (cat === 'fuel') {
+        color = '#f59e0b';
+        svg = `<path fill="#ffffff" d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.22v5.72c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-5h1v3.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H5V5h7v5zm6 0c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5z"/>`;
+      } else if (cat === 'propane') {
+        color = '#f97316';
+        svg = `<path fill="#ffffff" d="M12 2.1c-.2 2.8-2.3 4.8-4 6.7C6.1 10.9 5 13.1 5 15.5 5 19.1 7.9 22 11.5 22s6.5-2.9 6.5-6.5c0-3.3-2.1-6.2-4.2-8.4-.7-.7-1.4-1.5-1.8-2.5v-2.5zM12 19c-1.7 0-3-1.3-3-3 0-1.2.7-2.3 1.6-3.1.6-.5 1.4-1.1 1.8-2 .6 1.1 1.7 1.8 2.3 2.8.8 1.1 1.3 2.1 1.3 3.3 0 1.1-.9 2-2 2z"/>`;
+      } else if (cat === 'dump') {
+        color = '#ef4444';
+        svg = `<path fill="#ffffff" d="M12 1.5c-.8 0-1.5.4-1.9 1.1L.8 18.2C.2 19.3 1 20.7 2.2 20.7h19.6c1.2 0 2-1.4 1.4-2.5L13.9 2.6c-.4-.7-1.1-1.1-1.9-1.1z"/><g fill="#000000" transform="translate(3, 4)"><path d="M3 6h12a2 2 0 0 1 2 2v3H1V8a2 2 0 0 1 2-2z"/><circle cx="5" r="1.5"/><circle cx="13" r="1.5"/><path d="M12 12h3.5v3H12z"/><path fill="#ffffff" d="M13.2 13.2h1.1v4h-1.1z"/><path fill="#ffffff" d="M12.5 16.5l1.5 1.5 1.5-1.5z"/></g><path fill="#000000" d="M2 15h20v2H2z"/>`;
+      } else if (cat === 'parking') {
+        color = '#6366f1';
+        svg = `<path fill="#ffffff" d="M13.2 3H7c-1.1 0-2 .9-2 2v14h3v-6h5.2c2.6 0 4.8-2.1 4.8-4.7S15.8 3 13.2 3zm0 6.2H10V6h3.2c1 0 1.8.8 1.8 1.6 0 .9-.8 1.6-1.8 1.6z"/>`;
+      } else if (cat === 'campground') {
+        color = '#22c55e';
+        svg = `<path fill="#ffffff" d="M19 18L12 5 5 18H2v2h20v-2h-3zm-7-2l-3.5 0L12 9.2 15.5 16 12 16z"/>`;
+      } else {
+        color = '#f59e0b';
+        svg = `<path fill="#ffffff" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>`;
+      }
+
+      const uri = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 36 46"><path fill="${color}" stroke="#ffffff" stroke-width="2" d="M18 1C8.6 1 1 8.6 1 18c0 12.3 15.1 25.5 16.3 26.5a1 1 0 0 0 1.4 0C19.9 43.5 35 30.3 35 18 35 8.6 27.4 1 18 1z"/><circle cx="18" cy="18" r="13" fill="${color}"/><g transform="translate(6, 6)">${svg}</g></svg>`)}`;
+
+      return {
+        url: uri,
+        scaledSize: new window.google.maps.Size(24, 32),
+        anchor: new window.google.maps.Point(12, 32)
+      };
+    };
+
+    filtered.forEach(facility => {
       const marker = new window.google.maps.Marker({
-        position: { lat: item.lat, lng: item.lng },
-        map: mapInstance,
-        title: item.name,
-        icon: {
-          path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
-          fillColor: markerColor,
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 1.5,
-          scale: 1.2,
-          anchor: new window.google.maps.Point(12, 22)
-        }
+        position: { lat: facility.lat, lng: facility.lng },
+        map: googleMapInstance.current,
+        title: facility.name,
+        icon: getPinIcon(facility.category)
+      });
+
+      bounds.extend({ lat: facility.lat, lng: facility.lng });
+
+      const nameHtml = facility.website
+        ? `<a href="${facility.website}" target="_blank" rel="noopener noreferrer" style="color: #059669; font-size: 13px; font-weight: bold; text-decoration: underline; display: inline-flex; align-items: center; gap: 4px;">${facility.name} <span style="font-size: 9px; text-decoration: none;">↗</span></a>`
+        : `<strong style="color: #059669; font-size: 13px;">${facility.name}</strong>`;
+
+      const info = new window.google.maps.InfoWindow({
+        content: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 0 2px 2px 2px; max-width: 240px; margin-top: -4px;">
+            <div style="padding-right: 20px; margin-bottom: 3px;">
+              ${nameHtml}
+            </div>
+            <p style="margin: 0 0 6px 0; font-size: 11px; color: #475569; line-height: 1.3;">${facility.address}</p>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px;">
+              <span style="color: #0284c7; font-weight: 700; font-size: 11px; white-space: nowrap;">${facility.distanceMiles} mi away</span>
+              <a href="https://www.google.com/maps/dir/?api=1&destination=${facility.lat},${facility.lng}&travelmode=driving" target="_blank" rel="noopener noreferrer" style="background-color: #059669; color: #ffffff; padding: 4px 8px; border-radius: 6px; font-size: 10px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: gap: 4px; white-space: nowrap;">
+                <i class="fa-solid fa-location-arrow"></i> Navigate
+              </a>
+            </div>
+          </div>
+        `
       });
 
       marker.addListener('click', () => {
-        mapInstance.panTo({ lat: item.lat, lng: item.lng });
-        mapInstance.setZoom(15);
+        if (googleMapInstance.current) {
+          info.open(googleMapInstance.current, marker);
+        }
       });
 
       markersRef.current.push(marker);
     });
-  }, [placesList, userCoords, mapInstance]);
+
+    if (filtered.length > 0 && googleMapInstance.current) {
+      googleMapInstance.current.fitBounds(bounds, { padding: 40 });
+    }
+  }, [isGoogleLoaded, placesList, pullThroughOnly, fullHookupOnly, userCoords]);
 
   const handleManualLocationSubmit = () => {
     if (!manualInputText.trim()) return;
@@ -176,9 +228,9 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
         setUserCoords({ lat: newLat, lng: newLng });
         setUserLocationName(addr);
         setManualInputText(addr);
-        if (mapInstance) {
-          mapInstance.panTo({ lat: newLat, lng: newLng });
-          mapInstance.setZoom(13);
+        if (googleMapInstance.current) {
+          googleMapInstance.current.panTo({ lat: newLat, lng: newLng });
+          googleMapInstance.current.setZoom(13);
         }
       } else {
         setNoticeMessage("Location not found. Please try entering a valid City, State or Zip Code.");
@@ -193,9 +245,9 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
           const newLat = pos.coords.latitude;
           const newLng = pos.coords.longitude;
           setUserCoords({ lat: newLat, lng: newLng });
-          if (mapInstance) {
-            mapInstance.panTo({ lat: newLat, lng: newLng });
-            mapInstance.setZoom(13);
+          if (googleMapInstance.current) {
+            googleMapInstance.current.panTo({ lat: newLat, lng: newLng });
+            googleMapInstance.current.setZoom(13);
           }
           if (window.google && window.google.maps) {
             const geocoder = new window.google.maps.Geocoder();
@@ -216,6 +268,7 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
   };
 
   const filteredPlaces = placesList.filter(item => {
+    if (item.distanceMiles > 20.0) return false;
     if (pullThroughOnly && !item.pullThrough) return false;
     if (fullHookupOnly && item.category === 'campground' && !item.fullHookup) return false;
     return true;
@@ -384,9 +437,9 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
               <div
                 key={facility.id}
                 onClick={() => {
-                  if (mapInstance) {
-                    mapInstance.panTo({ lat: facility.lat, lng: facility.lng });
-                    mapInstance.setZoom(15);
+                  if (googleMapInstance.current) {
+                    googleMapInstance.current.panTo({ lat: facility.lat, lng: facility.lng });
+                    googleMapInstance.current.setZoom(15);
                   }
                 }}
                 className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/80 hover:border-emerald-500/80 transition space-y-2 cursor-pointer shadow"
