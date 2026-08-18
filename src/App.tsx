@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RvProfile } from './types/rv';
 import { Waypoint, WaypointStop, AiPlanPreview, DestinationWeather } from './types/itinerary';
 import { ChecklistTask } from './types/checklist';
@@ -9,6 +9,15 @@ import { fetchLiveWeatherForStops } from './services/weatherService';
 import { fetchRvSitePickerRecommendations } from './services/geminiService';
 import { calculateWaypointMetricsService } from './services/directionsService';
 import { AuthUser, signInWithGoogle, signOutUser, onAuthChange } from './services/authService';
+import {
+  saveUserProfileToCloud,
+  loadUserProfileFromCloud,
+  saveUserWaypointsToCloud,
+  loadUserWaypointsFromCloud,
+  saveUserChecklistsToCloud,
+  loadUserChecklistsFromCloud,
+  subscribeToUserCloudData
+} from './services/cloudStorageService';
 
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -29,6 +38,7 @@ export default function App() {
   // Authentication State
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const isInitialSyncDone = useRef(false);
 
   // RV Profile State
   const [profile, setProfile] = useState<RvProfile>(() => {
@@ -104,9 +114,93 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthChange((currentUser) => {
       setUser(currentUser);
+      if (!currentUser) {
+        isInitialSyncDone.current = false;
+      }
     });
     return () => unsubscribe();
   }, []);
+
+  // Phase 4: Initial Cloud Load, Guest-to-Cloud Migration & Real-Time Sync Subscription
+  useEffect(() => {
+    if (!user) return;
+
+    let isMounted = true;
+    setIsSyncing(true);
+
+    async function initializeUserCloudData() {
+      if (!user) return;
+      try {
+        // 1. Load or migrate RV Profile
+        const cloudProfile = await loadUserProfileFromCloud(user.uid);
+        if (cloudProfile && isMounted) {
+          setProfile(cloudProfile);
+          localStorage.setItem('rv_profile', JSON.stringify(cloudProfile));
+        } else if (!cloudProfile) {
+          await saveUserProfileToCloud(user.uid, profile);
+        }
+
+        // 2. Load or migrate Itinerary Waypoints
+        const cloudWaypoints = await loadUserWaypointsFromCloud(user.uid);
+        if (cloudWaypoints && isMounted) {
+          setWaypoints(cloudWaypoints);
+          localStorage.setItem('rv_waypoints', JSON.stringify(cloudWaypoints));
+        } else if (!cloudWaypoints && waypoints.length > 0) {
+          await saveUserWaypointsToCloud(user.uid, waypoints);
+        }
+
+        // 3. Load or migrate Checklists
+        const cloudChecklists = await loadUserChecklistsFromCloud(user.uid);
+        if (cloudChecklists && isMounted) {
+          setDepartureTasks(cloudChecklists.departureTasks);
+          setArrivalTasks(cloudChecklists.arrivalTasks);
+          localStorage.setItem('departure_tasks', JSON.stringify(cloudChecklists.departureTasks));
+          localStorage.setItem('arrival_tasks', JSON.stringify(cloudChecklists.arrivalTasks));
+        } else if (!cloudChecklists) {
+          await saveUserChecklistsToCloud(user.uid, departureTasks, arrivalTasks);
+        }
+
+        if (isMounted) {
+          isInitialSyncDone.current = true;
+          setIsSyncing(false);
+        }
+      } catch (err) {
+        console.error("Cloud data initialization error:", err);
+        if (isMounted) setIsSyncing(false);
+      }
+    }
+
+    initializeUserCloudData();
+
+    // Subscribe to live Firestore changes across multiple devices
+    const unsubscribeSync = subscribeToUserCloudData(user.uid, {
+      onProfileUpdate: (updatedProf) => {
+        if (isMounted && isInitialSyncDone.current) {
+          setProfile(updatedProf);
+          localStorage.setItem('rv_profile', JSON.stringify(updatedProf));
+        }
+      },
+      onWaypointsUpdate: (updatedWps) => {
+        if (isMounted && isInitialSyncDone.current) {
+          setWaypoints(updatedWps);
+          localStorage.setItem('rv_waypoints', JSON.stringify(updatedWps));
+        }
+      },
+      onChecklistsUpdate: ({ departureTasks: dTasks, arrivalTasks: aTasks }) => {
+        if (isMounted && isInitialSyncDone.current) {
+          setDepartureTasks(dTasks);
+          setArrivalTasks(aTasks);
+          localStorage.setItem('departure_tasks', JSON.stringify(dTasks));
+          localStorage.setItem('arrival_tasks', JSON.stringify(aTasks));
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeSync();
+    };
+  }, [user]);
 
   const handleSignIn = async () => {
     try {
@@ -173,25 +267,31 @@ export default function App() {
     }
   }, []);
 
-  // Sync Profile to LocalStorage
+  // Sync Profile to LocalStorage & Cloud Firestore
   const handleSaveProfile = (updated: RvProfile) => {
     setProfile(updated);
     localStorage.setItem('rv_profile', JSON.stringify(updated));
+    if (user && isInitialSyncDone.current) {
+      saveUserProfileToCloud(user.uid, updated).catch(err => console.error("Cloud profile save error:", err));
+    }
   };
 
-  // Sync Checklists to LocalStorage
+  // Sync Checklists to LocalStorage & Cloud Firestore
   useEffect(() => {
     localStorage.setItem('departure_tasks', JSON.stringify(departureTasks));
-  }, [departureTasks]);
-
-  useEffect(() => {
     localStorage.setItem('arrival_tasks', JSON.stringify(arrivalTasks));
-  }, [arrivalTasks]);
+    if (user && isInitialSyncDone.current) {
+      saveUserChecklistsToCloud(user.uid, departureTasks, arrivalTasks).catch(err => console.error("Cloud checklists save error:", err));
+    }
+  }, [departureTasks, arrivalTasks, user]);
 
-  // Sync Waypoints to LocalStorage
+  // Sync Waypoints to LocalStorage & Cloud Firestore
   useEffect(() => {
     localStorage.setItem('rv_waypoints', JSON.stringify(waypoints));
-  }, [waypoints]);
+    if (user && isInitialSyncDone.current) {
+      saveUserWaypointsToCloud(user.uid, waypoints).catch(err => console.error("Cloud waypoints save error:", err));
+    }
+  }, [waypoints, user]);
 
   // Recalculate Waypoint Metrics when stops, origins, or departure times change
   useEffect(() => {
@@ -371,7 +471,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
-      {/* Top Header with User Auth */}
+      {/* Top Header with User Auth & Cloud Sync */}
       <Header
         profile={profile}
         onOpenProfile={() => setIsRvProfileOpen(true)}
