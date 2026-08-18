@@ -25,9 +25,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'intime' | 'router' | 'planner' | 'checklist'>('intime');
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
 
-  // Map Route Instance
-  const [mapRouteInstance, setMapRouteInstance] = useState<google.maps.Map | null>(null);
-
   // RV Profile State
   const [profile, setProfile] = useState<RvProfile>(() => {
     try {
@@ -191,15 +188,11 @@ export default function App() {
     handleFetchWeather();
   }, [waypoints]);
 
-  // Tab Switch Handler with Map Resizing
+  // Tab Switch Handler
   const handleTabChange = (newTab: 'intime' | 'router' | 'planner' | 'checklist') => {
-    setTimeout(() => {
-      if (newTab === 'router' && mapRouteInstance) {
-        window.google?.maps?.event?.trigger(mapRouteInstance, 'resize');
-      } else if (newTab === 'planner') {
-        handleFetchWeather();
-      }
-    }, 100);
+    if (newTab === 'planner') {
+      handleFetchWeather();
+    }
   };
 
   // AI Copilot Plan Handler
@@ -374,8 +367,6 @@ export default function App() {
               userCoords={userCoords}
               userLocationName={userLocationName}
               isGoogleLoaded={isGoogleLoaded}
-              mapInstance={mapRouteInstance}
-              setMapInstance={setMapRouteInstance}
             />
           </div>
 
