@@ -43,8 +43,8 @@ export const RvSitePickerModal: React.FC<RvSitePickerModalProps> = ({
             <div>
               <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
                 Top 3 Recommended RV Campsites
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  Rig Matched
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  RV Profile Matched
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
