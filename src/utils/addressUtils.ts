@@ -6,9 +6,11 @@ export const parseDestinationList = (input: string): string[] => {
 
 export const formatResolvedPlaceAddress = (place: any): string => {
   if (!place) return '';
-  const name = place.name?.trim() || '';
-  const addr = place.formatted_address?.trim() || '';
+  const name = (typeof place.name === 'string' ? place.name : place.displayName?.text || '').trim();
+  const addr = (typeof place.formatted_address === 'string' ? place.formatted_address : place.formattedAddress || '').trim();
+  
   if (name && addr) {
+    // If the address already starts with or contains the specific place name, avoid redundant prefixing
     if (addr.toLowerCase().startsWith(name.toLowerCase())) {
       return addr;
     }
