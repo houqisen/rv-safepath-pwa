@@ -72,6 +72,53 @@
 
 ---
 
+## 📂 Modular Project Structure
+
+```
+src/
+├── types/
+│   ├── rv.ts                     # RvProfile definition & rig configuration
+│   ├── itinerary.ts              # Waypoint, WaypointStop, AiPlanPreview, DestinationWeather
+│   ├── places.ts                 # FacilityItem, PlaceCategory, RouteSummary, RvSitePickerResults
+│   └── checklist.ts              # ChecklistTask definition
+│
+├── constants/
+│   ├── mapStyles.ts              # DARK_MAP_STYLE (custom dark Google Maps theme)
+│   ├── profileDefaults.ts        # DEFAULT_PROFILE & initial specs
+│   └── checklistDefaults.ts      # INITIAL_DEPARTURE_TASKS, INITIAL_ARRIVAL_TASKS
+│
+├── utils/
+│   ├── dateUtils.ts              # calculateTripDurationAndSeason, getWaypointDisplayDay
+│   ├── addressUtils.ts           # formatResolvedPlaceAddress, parseDestinationList
+│   └── jsonUtils.ts              # normalizeWaypoints, normalizeSiteResults
+│
+├── services/
+│   ├── geminiService.ts          # generateAiTripPlan, fetchRvSitePickerRecommendations (Gemini API cascade)
+│   ├── weatherService.ts         # fetchLiveWeatherForStops, Open-Meteo geocoding & hazard alerts
+│   ├── placesService.ts          # searchNearbyPlaces, bulk propane verification & fuel pricing
+│   └── directionsService.ts      # calculateWaypointMetricsService, calculateSafeRouteService
+│
+├── components/
+│   ├── layout/
+│   │   ├── Header.tsx            # Top bar, Starlink indicator, Max Height clearance badge
+│   │   └── Sidebar.tsx           # Tab switcher navigation & Active Rig Specs card
+│   │
+│   ├── tabs/
+│   │   ├── InTimeFinderTab.tsx   # Google Map + nearby POI cards (Fuel, Propane, Dump, Camps, Parking)
+│   │   ├── SafeRouterTab.tsx     # A-to-B router, clearance checkboxes & route summary card
+│   │   ├── TripPlannerTab.tsx    # 3-3-3 micro-bar, nested daytime stops, weather tags, driver notes
+│   │   └── ChecklistsTab.tsx     # Pre-departure & Camp Arrival checklist cards
+│   │
+│   └── modals/
+│       ├── AiCopilotModal.tsx    # Clean AI planner (reads key from env, Guided/Custom, Plan preview)
+│       ├── RvSitePickerModal.tsx # Top 3 RV campsite comparison table (with Full Hookups FHU)
+│       └── RvProfileModal.tsx    # Dimensions, Towing MPG, Propane bins, Memberships & Hookups
+│
+└── App.tsx                       # Clean root component orchestrator (~380 lines)
+```
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
