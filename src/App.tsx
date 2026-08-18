@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { RvProfile } from './types/rv';
 import { Waypoint, WaypointStop, AiPlanPreview, DestinationWeather } from './types/itinerary';
 import { ChecklistTask } from './types/checklist';
@@ -25,8 +25,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'intime' | 'router' | 'planner' | 'checklist'>('intime');
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
 
-  // Map Instances
-  const [mapInTimeInstance, setMapInTimeInstance] = useState<google.maps.Map | null>(null);
+  // Map Route Instance
   const [mapRouteInstance, setMapRouteInstance] = useState<google.maps.Map | null>(null);
 
   // RV Profile State
@@ -195,9 +194,7 @@ export default function App() {
   // Tab Switch Handler with Map Resizing
   const handleTabChange = (newTab: 'intime' | 'router' | 'planner' | 'checklist') => {
     setTimeout(() => {
-      if (newTab === 'intime' && mapInTimeInstance) {
-        window.google?.maps?.event?.trigger(mapInTimeInstance, 'resize');
-      } else if (newTab === 'router' && mapRouteInstance) {
+      if (newTab === 'router' && mapRouteInstance) {
         window.google?.maps?.event?.trigger(mapRouteInstance, 'resize');
       } else if (newTab === 'planner') {
         handleFetchWeather();
@@ -365,8 +362,6 @@ export default function App() {
               userCoords={userCoords}
               userLocationName={userLocationName}
               isGoogleLoaded={isGoogleLoaded}
-              mapInstance={mapInTimeInstance}
-              setMapInstance={setMapInTimeInstance}
               setUserCoords={setUserCoords}
               setUserLocationName={setUserLocationName}
             />
