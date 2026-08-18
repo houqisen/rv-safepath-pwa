@@ -376,6 +376,8 @@ export default function App() {
               waypoints={waypoints}
               destinationWeathers={destinationWeathers}
               profile={profile}
+              isLoadingWeather={isLoadingWeather}
+              onFetchWeather={handleFetchWeather}
               onOpenAiCopilot={() => setIsAiCopilotOpen(true)}
               onOpenSitePicker={handleOpenSitePicker}
               onAddWaypoint={handleAddWaypoint}
