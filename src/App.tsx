@@ -163,7 +163,7 @@ export default function App() {
     localStorage.setItem('rv_waypoints', JSON.stringify(waypoints));
   }, [waypoints]);
 
-  // Recalculate Waypoint Metrics when stops/origins change
+  // Recalculate Waypoint Metrics when stops, origins, or departure times change
   useEffect(() => {
     if (!isGoogleLoaded) return;
     waypoints.forEach((wp) => {
@@ -171,7 +171,10 @@ export default function App() {
         setWaypoints(prev => prev.map(item => item.id === calculatedWp.id ? calculatedWp : item));
       });
     });
-  }, [isGoogleLoaded, waypoints.map(w => `${w.origin}->${w.stops.map(s => s.destination).join(',')}`).join('|')]);
+  }, [
+    isGoogleLoaded,
+    waypoints.map(w => `${w.origin}->${w.stops.map(s => `${s.destination}@${s.depHour}:${s.depMin}${s.depAmPm}`).join(',')}`).join('|')
+  ]);
 
   // Fetch Live Weather for Stops
   const handleFetchWeather = useCallback(() => {
