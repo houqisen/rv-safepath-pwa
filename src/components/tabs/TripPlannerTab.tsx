@@ -1,6 +1,6 @@
-import React from 'react';
-import { Waypoint, WaypointStop, DestinationWeather } from '../../types/itinerary';
+import React, { useRef, useEffect } from 'react';
 import { RvProfile } from '../../types/rv';
+import { Waypoint, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay } from '../../utils/dateUtils';
 import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
 
@@ -8,6 +8,8 @@ interface TripPlannerTabProps {
   waypoints: Waypoint[];
   destinationWeathers: Record<string, DestinationWeather>;
   profile: RvProfile;
+  isLoadingWeather?: boolean;
+  onFetchWeather?: () => void;
   onOpenAiCopilot: () => void;
   onOpenSitePicker: (destination: string, stayNights: number, wpId: number, stopIdx: number) => void;
   onAddWaypoint: () => void;
@@ -20,6 +22,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   waypoints,
   destinationWeathers,
   profile,
+  isLoadingWeather = false,
+  onFetchWeather,
   onOpenAiCopilot,
   onOpenSitePicker,
   onAddWaypoint,
@@ -27,13 +31,16 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   onUpdateWaypoint,
   onRemoveWaypoint
 }) => {
-  const setupPlaceAutocomplete = (inputEl: HTMLInputElement | null, onSelected: (address: string) => void) => {
+  const inputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const setupPlaceAutocomplete = (inputEl: HTMLInputElement | null, onSelected: (addr: string) => void) => {
     if (!inputEl || !window.google || !window.google.maps || !window.google.maps.places) return;
     if ((inputEl as any).__autocompleteAttached) return;
 
     try {
       const autocomplete = new window.google.maps.places.Autocomplete(inputEl);
       (inputEl as any).__autocompleteAttached = true;
+
       autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace();
         const formatted = formatResolvedPlaceAddress(place);
@@ -42,293 +49,386 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
         }
       });
     } catch (e) {
-      console.error("Autocomplete setup error:", e);
+      console.error("Autocomplete binding error:", e);
     }
   };
 
-  const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.max(38, el.scrollHeight) + 'px';
+  const handleAddStop = (wpId: number) => {
+    onUpdateWaypoint(wpId, (wp) => ({
+      ...wp,
+      stops: [
+        ...wp.stops,
+        {
+          id: Date.now(),
+          destination: '',
+          depHour: 12,
+          depMin: 0,
+          depAmPm: 'PM',
+          estMiles: 0,
+          estHours: 0,
+          arrivalHour: 15,
+          arrivalMinute: 0
+        }
+      ]
+    }));
+  };
+
+  const handleRemoveStop = (wpId: number, stopId: number) => {
+    onUpdateWaypoint(wpId, (wp) => ({
+      ...wp,
+      stops: wp.stops.filter(s => s.id !== stopId)
+    }));
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 max-w-5xl mx-auto w-full">
-      {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-lg">
+    <div className="flex-1 p-3.5 sm:p-6 overflow-y-auto max-w-6xl mx-auto w-full space-y-4 sm:space-y-6 flex-col">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-slate-800 pb-3 sm:pb-4">
         <div>
-          <h2 className="font-bold text-base text-slate-100 flex items-center gap-2">
-            <i className="fa-solid fa-calendar-days text-emerald-400"></i>
-            <span>Multi-Stop RV Trip Itinerary</span>
+          <h2 className="text-base sm:text-xl font-bold text-slate-100 flex items-center gap-2">
+            <i className="fa-solid fa-calendar-days text-emerald-400"></i> Multi-Day RV Trip Itinerary
           </h2>
-          <p className="text-xs text-slate-400">Pacing, daylight arrivals, multi-stop driving legs &amp; campground selection.</p>
+          <p className="text-[11px] sm:text-xs text-slate-400">Multi-stop daily pacing, daylight safety, live weather &amp; time zone shifts.</p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={onOpenAiCopilot}
-            className="flex-1 sm:flex-none bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-500 hover:to-sky-500 text-white font-semibold px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition"
-          >
-            <i className="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
-            <span>RV SafePath AI Copilot</span>
-          </button>
-          <button
-            type="button"
-            onClick={onAddWaypoint}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition"
-          >
-            <i className="fa-solid fa-plus text-emerald-400"></i>
-            <span>Add Day</span>
-          </button>
-          {waypoints.length > 0 && (
-            <button
-              type="button"
-              onClick={onClearAll}
-              className="bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-300 border border-slate-700 p-2 rounded-xl text-xs transition"
-              title="Clear all waypoints"
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {onFetchWeather && (
+            <button 
+              onClick={onFetchWeather} 
+              className="bg-slate-800 hover:bg-slate-700 text-sky-400 border border-sky-500/30 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
             >
-              <i className="fa-solid fa-trash"></i>
+              <i className={`fa-solid fa-rotate ${isLoadingWeather ? 'animate-spin' : ''}`}></i> Weather
+            </button>
+          )}
+
+          <button 
+            onClick={onOpenAiCopilot} 
+            className="bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-500 hover:to-sky-500 text-white font-semibold px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition"
+          >
+            <i className="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Plan with AI
+          </button>
+
+          <button 
+            onClick={onAddWaypoint} 
+            className="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
+          >
+            <i className="fa-solid fa-plus"></i> Add Waypoint
+          </button>
+
+          {waypoints.length > 0 && (
+            <button 
+              onClick={onClearAll}
+              className="bg-slate-800/80 hover:bg-red-500/20 text-slate-400 hover:text-red-300 border border-slate-700 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
+              title="Clear all days"
+            >
+              <i className="fa-solid fa-trash-can"></i> Clear
             </button>
           )}
         </div>
       </div>
 
-      {/* 3-3-3 Rule Banner */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs text-slate-300">
-        <div className="flex items-center gap-2">
-          <span className="text-amber-400 font-bold">RV 3-3-3 Safe Pacing:</span>
-          <span className="text-slate-400 hidden sm:inline">&le;300 miles driving/day · Arrive before 3:00 PM in daylight · Stay &ge;3 nights at destination</span>
+      {/* Original 3-3-3 Metric Cards */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="bg-slate-800/80 border border-slate-700/70 rounded-xl sm:rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row items-center sm:gap-3 text-center sm:text-left">
+          <div className="p-1.5 sm:p-3 bg-emerald-500/20 text-emerald-400 rounded-lg sm:rounded-xl mb-1 sm:mb-0">
+            <i className="fa-solid fa-gauge-high text-sm sm:text-xl"></i>
+          </div>
+          <div>
+            <div className="text-[10px] sm:text-xs text-slate-400">Daily Target</div>
+            <div className="text-xs sm:text-lg font-bold text-slate-100">&le;300 Mi/Day</div>
+          </div>
         </div>
-        <span className="text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-medium">Active Guard</span>
+
+        <div className="bg-slate-800/80 border border-slate-700/70 rounded-xl sm:rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row items-center sm:gap-3 text-center sm:text-left">
+          <div className="p-1.5 sm:p-3 bg-amber-500/20 text-amber-400 rounded-lg sm:rounded-xl mb-1 sm:mb-0">
+            <i className="fa-solid fa-clock text-sm sm:text-xl"></i>
+          </div>
+          <div>
+            <div className="text-[10px] sm:text-xs text-slate-400">Target Arrival</div>
+            <div className="text-xs sm:text-lg font-bold text-slate-100">&lt;3:00 PM</div>
+          </div>
+        </div>
+
+        <div className="bg-slate-800/80 border border-slate-700/70 rounded-xl sm:rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row items-center sm:gap-3 text-center sm:text-left">
+          <div className="p-1.5 sm:p-3 bg-purple-500/20 text-purple-400 rounded-lg sm:rounded-xl mb-1 sm:mb-0">
+            <i className="fa-solid fa-bed text-sm sm:text-xl"></i>
+          </div>
+          <div>
+            <div className="text-[10px] sm:text-xs text-slate-400">Min Stay</div>
+            <div className="text-xs sm:text-lg font-bold text-slate-100">&ge;3 Nights</div>
+          </div>
+        </div>
       </div>
 
-      {/* Empty State */}
-      {waypoints.length === 0 ? (
-        <div className="text-center py-16 bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl space-y-3">
-          <div className="bg-emerald-500/10 text-emerald-400 w-12 h-12 rounded-2xl flex items-center justify-center mx-auto text-xl border border-emerald-500/20">
-            <i className="fa-solid fa-route"></i>
+      {/* Waypoints List & Original Dual-Action Empty State */}
+      <div className="space-y-3 sm:space-y-4">
+        {waypoints.length === 0 ? (
+          <div className="text-center py-12 px-4 bg-slate-800/40 rounded-2xl border border-slate-700/60 space-y-4 max-w-lg mx-auto">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl">
+              <i className="fa-solid fa-route"></i>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-100">Plan Your Next RV Adventure</h3>
+              <p className="text-xs text-slate-400 mt-1">Generate a complete rig-safe itinerary with Gemini AI, or build your custom waypoints manually.</p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2">
+              <button 
+                onClick={onOpenAiCopilot}
+                className="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-500 hover:to-sky-500 text-white font-semibold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition"
+              >
+                <i className="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Generate with AI
+              </button>
+              <button 
+                onClick={onAddWaypoint}
+                className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-medium px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition"
+              >
+                <i className="fa-solid fa-plus text-emerald-400"></i> Add Day Manually
+              </button>
+            </div>
           </div>
-          <h3 className="font-bold text-slate-200 text-sm">No Travel Days Planned Yet</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Click "RV SafePath AI Copilot" to generate a complete multi-day itinerary with verified stops, or add days manually.
-          </p>
-        </div>
-      ) : (
-        /* Waypoints List */
-        <div className="space-y-4">
-          {waypoints.map((wp, wpIdx) => {
-            const displayDay = getWaypointDisplayDay(waypoints, wpIdx);
-            const isHomeReturn = wp.isHomeReturn || (wp.stayNights === 0 && wpIdx > 0);
-            const stops = wp.stops || [];
-            const finalStop = stops[stops.length - 1];
+        ) : (
+          waypoints.map((wp, wIdx) => {
+            const currentDisplayDay = getWaypointDisplayDay(waypoints, wIdx);
+            const stayCount = wp.stayNights !== undefined ? wp.stayNights : 1;
+
+            const breaksMiles = wp.estMiles > 300;
+            const arrH = wp.arrivalHour !== undefined ? wp.arrivalHour : 15;
+            const arrM = wp.arrivalMinute !== undefined ? wp.arrivalMinute : 0;
+            const breaksTime = (arrH > 16) || (arrH === 16 && arrM > 0);
+            const breaksStay = stayCount < 3 && stayCount > 0;
+            const brokenCount = (breaksMiles ? 1 : 0) + (breaksTime ? 1 : 0) + (breaksStay ? 1 : 0);
+
+            let badgeBgClass = "bg-emerald-600 text-white";
+            if (brokenCount === 1) badgeBgClass = "bg-amber-500 text-slate-950 font-bold";
+            else if (brokenCount === 2) badgeBgClass = "bg-pink-500 text-white font-bold";
+            else if (brokenCount >= 3) badgeBgClass = "bg-red-600 text-white font-bold";
+
+            const formattedArrTime = `${arrH % 12 || 12}:${arrM < 10 ? '0' : ''}${arrM} ${arrH >= 12 ? 'PM' : 'AM'}`;
+            const isExpanded = wp.isExpanded ?? true;
 
             return (
-              <div
-                key={wp.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3 transition hover:border-slate-700"
-              >
-                {/* Day Header */}
-                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="bg-emerald-500 text-slate-950 font-black px-2.5 py-1 rounded-lg text-xs tracking-wider">
-                      DAY {displayDay}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {isHomeReturn ? (
-                        <span className="text-amber-400 font-bold flex items-center gap-1">
-                          <i className="fa-solid fa-house"></i> Return Home Journey
-                        </span>
-                      ) : (
-                        <span>
-                          Stay: <strong className="text-emerald-400">{wp.stayNights} Night{wp.stayNights > 1 ? 's' : ''}</strong>
-                        </span>
-                      )}
+              <div key={wp.id} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-3 sm:p-4 space-y-3 shadow">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button 
+                      onClick={() => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, isExpanded: !isExpanded }))} 
+                      className="text-slate-300 hover:text-emerald-400 p-1 text-xs font-semibold flex items-center gap-1.5 bg-slate-900/50 rounded-lg px-2 border border-slate-700"
+                    >
+                      <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'}`}></i>
+                      <span className={`${badgeBgClass} text-[11px] font-bold px-2 py-0.5 rounded`}>DAY {currentDisplayDay}</span>
+                    </button>
+                    <span className="text-xs text-slate-300 font-medium">
+                      Day Distance: <strong className="text-emerald-400">{wp.estMiles} mi</strong> | Camp Arrival: <strong className={breaksTime ? 'text-amber-400 font-bold' : 'text-emerald-400'}>{formattedArrTime}</strong>
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {!isHomeReturn && (
-                      <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg text-xs">
-                        <span className="text-slate-400 text-[10px]">Nights:</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="30"
-                          value={wp.stayNights}
-                          onChange={(e) => {
-                            const n = Math.max(1, parseInt(e.target.value, 10) || 1);
-                            onUpdateWaypoint(wp.id, prev => ({ ...prev, stayNights: n }));
-                          }}
-                          className="w-10 bg-slate-900 border border-slate-700 rounded px-1 text-center text-xs text-emerald-400 font-bold"
-                        />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onRemoveWaypoint(wp.id)}
-                      className="text-slate-400 hover:text-red-400 text-xs p-1 transition"
-                      title="Remove Day"
-                    >
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-400">Stay:</span>
+                    <input 
+                      type="number" 
+                      min="0"
+                      value={wp.stayNights ?? 0} 
+                      onChange={(e) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, stayNights: Math.max(0, parseInt(e.target.value, 10) || 0) }))} 
+                      className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-center text-slate-200 focus:outline-none focus:border-emerald-500" 
+                    />
+                    <span className="text-slate-400">{wp.stayNights === 0 ? 'Nights (Transit/End)' : `${wp.stayNights} Night${wp.stayNights > 1 ? 's' : ''}`}</span>
+
+                    <button onClick={() => onRemoveWaypoint(wp.id)} className="text-slate-400 hover:text-red-400 p-1.5 ml-1" title="Delete Day">
                       <i className="fa-solid fa-trash"></i>
                     </button>
                   </div>
                 </div>
 
-                {/* Origin Input */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] text-slate-400 font-medium">Starting Location (Origin)</label>
-                  <input
-                    ref={(el) => setupPlaceAutocomplete(el, (addr) => {
-                      onUpdateWaypoint(wp.id, prev => ({ ...prev, origin: addr }));
-                    })}
-                    type="text"
-                    defaultValue={wp.origin}
-                    placeholder="Enter starting city, state, or address..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:border-emerald-500"
-                  />
-                </div>
+                {isExpanded && (
+                  <div className="space-y-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Starting Place (Origin)</label>
+                      <input 
+                        ref={(el) => {
+                          inputsRef.current[`origin_${wp.id}`] = el;
+                          setupPlaceAutocomplete(el, (addr) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: addr })));
+                        }}
+                        type="text" 
+                        value={wp.origin} 
+                        onChange={(e) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: e.target.value }))}
+                        placeholder="Starting place..." 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                      />
+                    </div>
 
-                {/* Nested Stops Timeline */}
-                <div className="space-y-2.5 pt-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[11px] font-semibold text-slate-300">
-                      Daytime Stops &amp; Overnight Destination ({stops.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newStop: WaypointStop = {
-                          id: Date.now(),
-                          destination: '',
-                          depHour: 10,
-                          depMin: 0,
-                          depAmPm: 'AM',
-                          estMiles: 0,
-                          estHours: 0,
-                          arrivalHour: 12,
-                          arrivalMinute: 0
-                        };
-                        onUpdateWaypoint(wp.id, prev => ({ ...prev, stops: [...prev.stops, newStop] }));
-                      }}
-                      className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
-                    >
-                      <i className="fa-solid fa-plus text-[10px]"></i> Add Intermediate Stop
-                    </button>
-                  </div>
+                    <div className="space-y-3 pl-2 sm:pl-4 border-l-2 border-slate-700/60">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Stops &amp; Daytime Itinerary ({wp.stops?.length || 1})
+                        </span>
+                        <button 
+                          onClick={() => handleAddStop(wp.id)}
+                          className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg"
+                        >
+                          <i className="fa-solid fa-plus"></i> Add Stop
+                        </button>
+                      </div>
 
-                  {stops.map((stop, sIdx) => {
-                    const isLastStop = sIdx === stops.length - 1;
-                    const stopWeather = destinationWeathers[stop.destination?.trim()];
+                      {(wp.stops || []).map((stop, sIdx, arr) => {
+                        const stopArrH = stop.arrivalHour !== undefined ? stop.arrivalHour : 15;
+                        const stopArrM = stop.arrivalMinute !== undefined ? stop.arrivalMinute : 0;
+                        const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
+                        const weatherInfo = stop.destination ? destinationWeathers[stop.destination] : null;
+                        const isLastStopOfWaypoint = sIdx === (arr.length - 1);
 
-                    return (
-                      <div
-                        key={stop.id || sIdx}
-                        className={`p-3 rounded-xl border space-y-2 text-xs ${
-                          isLastStop
-                            ? 'bg-slate-800/80 border-slate-700'
-                            : 'bg-slate-850 border-slate-750'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-1.5 font-bold text-[11px]">
-                            <span className={isLastStop ? 'text-emerald-400' : 'text-sky-400'}>
-                              {isLastStop ? '🏁 Final Overnight Stop:' : `📍 Stop ${sIdx + 1}:`}
-                            </span>
-                          </div>
+                        return (
+                          <div key={stop.id} className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-emerald-400">Stop {sIdx + 1}</span>
+                                {isLastStopOfWaypoint ? (
+                                  <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-semibold">
+                                    🏕️ Overnight Destination ({stayCount}N)
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded font-medium">
+                                    ☕ Mid-day / Fuel Pause
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-slate-400">
+                                  Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}</strong>
+                                </span>
+                                {arr.length > 1 && (
+                                  <button 
+                                    onClick={() => handleRemoveStop(wp.id, stop.id)}
+                                    className="text-slate-500 hover:text-red-400 p-1 text-xs"
+                                    title="Remove this stop"
+                                  >
+                                    <i className="fa-solid fa-xmark"></i>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
 
-                          <div className="flex items-center gap-1.5">
-                            {/* RV Site Picker for destination stops */}
-                            {isLastStop && !isHomeReturn && (
-                              <button
-                                type="button"
-                                onClick={() => onOpenSitePicker(stop.destination, wp.stayNights, wp.id, sIdx)}
-                                className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 transition"
-                              >
-                                <i className="fa-solid fa-campground"></i> Top 3 RV Campsites
-                              </button>
-                            )}
-
-                            {stops.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onUpdateWaypoint(wp.id, prev => ({
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input 
+                                ref={(el) => {
+                                  inputsRef.current[`stop_${wp.id}_${stop.id}`] = el;
+                                  setupPlaceAutocomplete(el, (addr) => {
+                                    onUpdateWaypoint(wp.id, (prev) => ({
+                                      ...prev,
+                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
+                                    }));
+                                  });
+                                }}
+                                type="text" 
+                                value={stop.destination} 
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  onUpdateWaypoint(wp.id, (prev) => ({
                                     ...prev,
-                                    stops: prev.stops.filter((_, idx) => idx !== sIdx)
+                                    stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val } : s)
                                   }));
                                 }}
-                                className="text-slate-400 hover:text-red-400 text-xs p-0.5"
-                              >
-                                <i className="fa-solid fa-xmark"></i>
-                              </button>
+                                placeholder={isLastStopOfWaypoint ? "Campground or Destination..." : "Scenic overlook, Rest area, Fuel..."} 
+                                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                              />
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] text-slate-400">Depart:</span>
+                                <input 
+                                  type="number" 
+                                  min="1" 
+                                  max="12" 
+                                  value={stop.depHour} 
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10) || 8;
+                                    onUpdateWaypoint(wp.id, (prev) => ({
+                                      ...prev,
+                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, depHour: val } : s)
+                                    }));
+                                  }}
+                                  className="w-10 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200" 
+                                />
+                                <span className="text-slate-500">:</span>
+                                <input 
+                                  type="number" 
+                                  min="0" 
+                                  max="59" 
+                                  step="5"
+                                  value={stop.depMin} 
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10) || 0;
+                                    onUpdateWaypoint(wp.id, (prev) => ({
+                                      ...prev,
+                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, depMin: val } : s)
+                                    }));
+                                  }}
+                                  className="w-10 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200" 
+                                />
+                                <button 
+                                  onClick={() => {
+                                    onUpdateWaypoint(wp.id, (prev) => ({
+                                      ...prev,
+                                      stops: prev.stops.map(s => s.id === stop.id ? { ...s, depAmPm: s.depAmPm === 'AM' ? 'PM' : 'AM' } : s)
+                                    }));
+                                  }}
+                                  className="px-1.5 py-1 bg-slate-800 border border-slate-700 rounded text-[10px] text-emerald-400 font-bold"
+                                >
+                                  {stop.depAmPm || 'AM'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Weather Card */}
+                            {weatherInfo && (
+                              <div className={`p-2 rounded-lg text-[11px] border flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 ${weatherInfo.isFreezeWarning ? 'bg-blue-950/50 border-blue-500/50 text-blue-200' : weatherInfo.isWindWarning ? 'bg-amber-950/50 border-amber-500/50 text-amber-200' : 'bg-slate-950/60 border-slate-700/60 text-slate-300'}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{weatherInfo.icon}</span>
+                                  <div>
+                                    <span className="font-semibold">{weatherInfo.condition}</span> | High: <strong className="text-slate-100">{weatherInfo.tempHigh}°F</strong> / Low: <strong className="text-slate-100">{weatherInfo.tempLow}°F</strong> | Wind: <strong className="text-slate-100">{weatherInfo.windSpeed} mph</strong>
+                                  </div>
+                                </div>
+                                {(weatherInfo.isFreezeWarning || weatherInfo.isWindWarning) && (
+                                  <div className="flex items-center gap-1 font-bold text-[10px] uppercase">
+                                    <i className="fa-solid fa-triangle-exclamation text-amber-400"></i>
+                                    <span>{weatherInfo.isFreezeWarning ? 'Freeze Warning' : 'Wind Advisory'}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Campsite Recommendation Trigger */}
+                            {isLastStopOfWaypoint && stop.destination && (
+                              <div className="flex justify-end pt-1">
+                                <button 
+                                  onClick={() => onOpenSitePicker(stop.destination, stayCount, wp.id, sIdx)}
+                                  className="text-[11px] bg-slate-800 hover:bg-slate-700 border border-emerald-500/40 text-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition font-medium"
+                                >
+                                  <i className="fa-solid fa-magnifying-glass text-emerald-400"></i>
+                                  <span>Find Verified RV Sites for {profile.lengthFeet}ft Rig</span>
+                                </button>
+                              </div>
                             )}
                           </div>
-                        </div>
+                        );
+                      })}
+                    </div>
 
-                        {/* Stop Destination Field */}
-                        <input
-                          ref={(el) => setupPlaceAutocomplete(el, (addr) => {
-                            onUpdateWaypoint(wp.id, prev => {
-                              const updatedStops = [...prev.stops];
-                              updatedStops[sIdx] = { ...updatedStops[sIdx], destination: addr };
-                              return { ...prev, stops: updatedStops };
-                            });
-                          })}
-                          type="text"
-                          defaultValue={stop.destination}
-                          placeholder={isLastStop ? "Overnight Campground or City..." : "Daytime scenic overlook or rest stop..."}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:border-emerald-500"
-                        />
-
-                        {/* Weather Badge & Alerts */}
-                        {stopWeather && (
-                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                            <span className="bg-sky-500/10 text-sky-300 border border-sky-500/30 text-[10px] px-2 py-0.5 rounded font-medium">
-                              🌡️ {stopWeather.temp} · {stopWeather.condition}
-                            </span>
-                            {stopWeather.hazardAlert && (
-                              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded font-bold">
-                                ⚠️ {stopWeather.hazardAlert}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Day Summary Metrics */}
-                <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 flex flex-wrap justify-between items-center text-xs text-slate-300 gap-2">
-                  <div className="flex items-center gap-3">
-                    <span>Total Day Distance: <strong className="text-emerald-400">{wp.estMiles || 0} mi</strong></span>
-                    <span>Driving Time: <strong className="text-slate-200">~{wp.estHours ? Math.round(wp.estHours * 10) / 10 : 0} hrs</strong></span>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Day Notes &amp; Highlights</label>
+                      <textarea 
+                        value={wp.notes} 
+                        onChange={(e) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Day highlights, bridge clearances, planned activities..." 
+                        rows={2}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 resize-y"
+                      ></textarea>
+                    </div>
                   </div>
-                  <div className="text-slate-400 text-[11px]">
-                    Est. Arrival: <strong className="text-amber-400">{wp.arrivalHour || 15}:{String(wp.arrivalMinute || 0).padStart(2, '0')}</strong> in daylight
-                  </div>
-                </div>
-
-                {/* Notes Textarea */}
-                <div>
-                  <textarea
-                    rows={1}
-                    value={wp.notes || ''}
-                    onInput={(e) => autoResizeTextarea(e.currentTarget)}
-                    onChange={(e) => {
-                      const txt = e.target.value;
-                      onUpdateWaypoint(wp.id, prev => ({ ...prev, notes: txt }));
-                    }}
-                    placeholder="Add driver notes, campsite confirmation #, turn cautions, or points of interest..."
-                    className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:border-emerald-500 resize-none"
-                  />
-                </div>
+                )}
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 };
