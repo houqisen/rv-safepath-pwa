@@ -69,10 +69,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, profi
         <span>RV Checklists</span>
       </button>
 
-      {/* Active Rig Specs Footer Card */}
+      {/* Active RV Specs Footer Card */}
       <div className="hidden md:block bg-slate-900/80 border border-slate-700/80 rounded-xl p-3 text-xs space-y-2 mt-auto">
         <div className="flex items-center justify-between text-slate-400 font-semibold border-b border-slate-700/60 pb-1.5">
-          <span className="uppercase text-[10px] tracking-wider">ACTIVE RIG SPECS</span>
+          <span className="uppercase text-[10px] tracking-wider">ACTIVE RV SPECS</span>
           <i className="fa-solid fa-shield-halved text-emerald-400 text-xs"></i>
         </div>
         <div className="space-y-1 text-[11px] text-slate-300">
