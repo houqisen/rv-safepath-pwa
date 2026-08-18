@@ -1,4 +1,4 @@
-import { Waypoint } from '../types/itinerary';
+import { Waypoint, WaypointStop } from '../types/itinerary';
 import { RouteSummary } from '../types/places';
 import { RvProfile } from '../types/rv';
 
@@ -40,45 +40,55 @@ export function calculateWaypointMetricsService(
         let totalMeters = 0;
         let totalSeconds = 0;
 
-        let currentDepH = stops[0]?.depHour !== undefined ? stops[0].depHour : 8;
-        let currentDepM = stops[0]?.depMin !== undefined ? stops[0].depMin : 0;
-        let currentDepAP = stops[0]?.depAmPm || 'AM';
+        let prevArrivalTotalMins = 0;
 
-        const updatedStops = stops.map((stop, sIdx) => {
+        const updatedStops: WaypointStop[] = stops.map((stop, sIdx) => {
           const leg = legs[sIdx];
           if (!leg) return stop;
-
-          if (sIdx > 0 && stop.depHour !== undefined) {
-            currentDepH = stop.depHour;
-            currentDepM = stop.depMin !== undefined ? stop.depMin : 0;
-            currentDepAP = stop.depAmPm || 'AM';
-          }
 
           const legMeters = leg.distance?.value || 0;
           const legSeconds = leg.duration?.value || 0;
           const legMiles = Math.round((legMeters / 1609.34) * 10) / 10;
           const legHours = legSeconds / 3600;
+          const legDrivingMins = Math.round(legSeconds / 60);
 
-          let baseH = currentDepH % 12;
-          if (currentDepAP === 'PM') baseH += 12;
-          const totalDepMins = baseH * 60 + currentDepM;
-          const totalArrMins = totalDepMins + Math.round(legSeconds / 60);
-          const arrH = Math.floor(totalArrMins / 60) % 24;
-          const arrM = totalArrMins % 60;
+          let depH = stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 12);
+          let depM = stop.depMin !== undefined ? stop.depMin : 0;
+          let depAP = stop.depAmPm || (sIdx === 0 ? 'AM' : 'PM');
 
-          const calculatedStop = {
+          // Convert departure time to minutes from midnight
+          let depBaseH = depH % 12;
+          if (depAP === 'PM') depBaseH += 12;
+          let stopDepTotalMins = depBaseH * 60 + depM;
+
+          // For stops after stop 0: if departure was set before previous stop arrival, cascade departure to previous arrival
+          if (sIdx > 0 && prevArrivalTotalMins > 0 && stopDepTotalMins < prevArrivalTotalMins) {
+            stopDepTotalMins = prevArrivalTotalMins;
+            const newDepH24 = Math.floor(stopDepTotalMins / 60) % 24;
+            depH = newDepH24 % 12 || 12;
+            depM = stopDepTotalMins % 60;
+            depAP = newDepH24 >= 12 ? 'PM' : 'AM';
+          }
+
+          // Calculate arrival time for this stop
+          const stopArrTotalMins = stopDepTotalMins + legDrivingMins;
+          const arrH24 = Math.floor(stopArrTotalMins / 60) % 24;
+          const arrH = arrH24;
+          const arrM = stopArrTotalMins % 60;
+
+          // Update prevArrivalTotalMins for the next stop
+          prevArrivalTotalMins = stopArrTotalMins;
+
+          return {
             ...stop,
+            depHour: depH,
+            depMin: depM,
+            depAmPm: depAP,
             estMiles: legMiles,
             estHours: legHours,
             arrivalHour: arrH,
             arrivalMinute: arrM
           };
-
-          currentDepH = arrH % 12 || 12;
-          currentDepM = arrM;
-          currentDepAP = arrH >= 12 ? 'PM' : 'AM';
-
-          return calculatedStop;
         });
 
         legs.forEach(leg => {
