@@ -3,6 +3,7 @@ import { RvProfile } from '../../types/rv';
 import { FacilityItem, PlaceCategory } from '../../types/places';
 import { DARK_MAP_STYLE } from '../../constants/mapStyles';
 import { searchNearbyPlaces } from '../../services/placesService';
+import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
 
 interface InTimeFinderTabProps {
   profile: RvProfile;
@@ -69,7 +70,7 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
         if (place && place.geometry && place.geometry.location) {
           const newLat = place.geometry.location.lat();
           const newLng = place.geometry.location.lng();
-          const addr = place.formatted_address || place.name || '';
+          const addr = formatResolvedPlaceAddress(place);
           setUserCoords({ lat: newLat, lng: newLng });
           setUserLocationName(addr);
           setManualInputText(addr);
