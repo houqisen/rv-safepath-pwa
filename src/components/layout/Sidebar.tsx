@@ -2,68 +2,108 @@ import React from 'react';
 import { RvProfile } from '../../types/rv';
 
 interface SidebarProps {
-  activeTab: 'finder' | 'router' | 'planner' | 'checklists';
-  setActiveTab: (tab: 'finder' | 'router' | 'planner' | 'checklists') => void;
+  activeTab: 'intime' | 'router' | 'planner' | 'checklist';
+  setActiveTab: (tab: 'intime' | 'router' | 'planner' | 'checklist') => void;
   profile: RvProfile;
+  onTabChange?: (tab: 'intime' | 'router' | 'planner' | 'checklist') => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, profile }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, profile, onTabChange }) => {
   const combinedLen = profile.combinedLengthFeet || profile.lengthFeet;
+  const formattedHeight = `${profile.heightFeet}' ${profile.heightInches}"`;
   const safeMpgDisplay = Number(profile.towingMpg) || 10;
   const safeFuelRange = safeMpgDisplay * 25;
 
-  const tabs: { id: 'finder' | 'router' | 'planner' | 'checklists'; label: string; icon: string }[] = [
-    { id: 'finder', label: 'In-Time Finder', icon: 'fa-solid fa-map-location-dot' },
-    { id: 'router', label: 'Safe Router', icon: 'fa-solid fa-route' },
-    { id: 'planner', label: 'Trip Planner', icon: 'fa-solid fa-calendar-days' },
-    { id: 'checklists', label: 'Checklists', icon: 'fa-solid fa-list-check' }
-  ];
+  const handleSelectTab = (tab: 'intime' | 'router' | 'planner' | 'checklist') => {
+    setActiveTab(tab);
+    if (onTabChange) onTabChange(tab);
+  };
 
   return (
-    <div className="w-full md:w-64 bg-slate-900 border-r border-slate-800 p-3 md:p-4 flex flex-row md:flex-col justify-between shrink-0 shadow-lg md:min-h-[calc(100vh-61px)]">
-      <div className="space-y-1 w-full flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center space-x-3 px-3.5 py-2.5 rounded-xl font-medium text-xs transition shrink-0 md:w-full ${
-              activeTab === tab.id
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <i className={`${tab.icon} text-sm w-4 text-center`}></i>
-            <span className="whitespace-nowrap">{tab.label}</span>
-          </button>
-        ))}
-      </div>
+    <nav className="md:w-64 bg-slate-800/90 border-r border-slate-700 flex md:flex-col justify-around md:justify-start p-2 md:p-3 gap-1 z-20 shrink-0 order-last md:order-first">
+      <button 
+        onClick={() => handleSelectTab('intime')} 
+        className={`flex-1 md:flex-none flex flex-col md:flex-row items-center gap-2 p-2.5 rounded-xl text-xs md:text-sm font-medium transition ${
+          activeTab === 'intime' 
+            ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' 
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+        }`}
+      >
+        <i className="fa-solid fa-compass text-lg md:text-base"></i>
+        <span>In-Time Finder</span>
+      </button>
 
-      <div className="hidden md:block bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 text-[11px] text-slate-400 space-y-1.5 mt-4">
-        <div className="text-slate-300 font-semibold flex items-center justify-between">
-          <span>Active Rig Specs</span>
-          <span className="text-[10px] text-emerald-400 font-mono">ACTIVE</span>
+      <button 
+        onClick={() => handleSelectTab('router')} 
+        className={`flex-1 md:flex-none flex flex-col md:flex-row items-center gap-2 p-2.5 rounded-xl text-xs md:text-sm font-medium transition ${
+          activeTab === 'router' 
+            ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' 
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+        }`}
+      >
+        <i className="fa-solid fa-route text-lg md:text-base"></i>
+        <span>Safe Router</span>
+      </button>
+
+      <button 
+        onClick={() => handleSelectTab('planner')} 
+        className={`flex-1 md:flex-none flex flex-col md:flex-row items-center gap-2 p-2.5 rounded-xl text-xs md:text-sm font-medium transition ${
+          activeTab === 'planner' 
+            ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' 
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+        }`}
+      >
+        <i className="fa-solid fa-calendar-days text-lg md:text-base"></i>
+        <span>Trip Planner</span>
+      </button>
+
+      <button 
+        onClick={() => handleSelectTab('checklist')} 
+        className={`flex-1 md:flex-none flex flex-col md:flex-row items-center gap-2 p-2.5 rounded-xl text-xs md:text-sm font-medium transition ${
+          activeTab === 'checklist' 
+            ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' 
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+        }`}
+      >
+        <i className="fa-solid fa-list-check text-lg md:text-base"></i>
+        <span>RV Checklists</span>
+      </button>
+
+      {/* Active Rig Specs Footer Card */}
+      <div className="hidden md:block bg-slate-900/80 border border-slate-700/80 rounded-xl p-3 text-xs space-y-2 mt-auto">
+        <div className="flex items-center justify-between text-slate-400 font-semibold border-b border-slate-700/60 pb-1.5">
+          <span className="uppercase text-[10px] tracking-wider">ACTIVE RIG SPECS</span>
+          <i className="fa-solid fa-shield-halved text-emerald-400 text-xs"></i>
         </div>
-        <div className="flex justify-between">
-          <span>Type:</span>
-          <span className="text-slate-200 font-medium truncate max-w-[110px]">{profile.rvType}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Combined:</span>
-          <span className="text-slate-200 font-medium">{combinedLen} ft</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Weight:</span>
-          <span className="text-slate-200 font-medium">{profile.weightLbs.toLocaleString()} lbs</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Towing MPG:</span>
-          <span className="text-amber-400 font-medium">{safeMpgDisplay} MPG (~{safeFuelRange} mi)</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Hookup:</span>
-          <span className="text-sky-300 font-medium uppercase">{profile.minHookup}</span>
+        <div className="space-y-1 text-[11px] text-slate-300">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Class/Type:</span>
+            <span className="font-semibold text-emerald-300 truncate max-w-[110px]">{profile.rvType} ({profile.ampRating})</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Height:</span>
+            <span className="font-bold text-amber-400">{formattedHeight}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Length/Weight:</span>
+            <span className="truncate max-w-[130px]">{profile.lengthFeet}ft ({combinedLen}ft combined) / {profile.weightLbs.toLocaleString()} lbs</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Towing MPG:</span>
+            <span className="font-bold text-amber-300">{safeMpgDisplay} MPG (~{safeFuelRange} mi range)</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Tow Vehicle:</span>
+            <span className="text-slate-300 truncate max-w-[120px]">{profile.towSetup}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Off-Grid Power:</span>
+            <span className="text-amber-400 flex items-center gap-1">
+              <i className="fa-solid fa-solar-panel text-[10px]"></i> {profile.solarWatts ? profile.solarWatts.split(' ')[0] : '200W'}
+            </span>
+          </div>
         </div>
       </div>
-    </div>
+    </nav>
   );
 };
