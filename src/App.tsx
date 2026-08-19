@@ -8,7 +8,7 @@ import { INITIAL_DEPARTURE_TASKS, INITIAL_ARRIVAL_TASKS } from './constants/chec
 import { fetchLiveWeatherForStops } from './services/weatherService';
 import { fetchRvSitePickerRecommendations } from './services/geminiService';
 import { calculateWaypointMetricsService } from './services/directionsService';
-import { AuthUser, signInWithGoogle, signOutUser, onAuthChange } from './services/authService';
+import { AuthUser, signOutUser, onAuthChange } from './services/authService';
 import {
   saveUserProfileToCloud,
   loadUserProfileFromCloud,
@@ -28,6 +28,7 @@ import { ChecklistsTab } from './components/tabs/ChecklistsTab';
 import { AiCopilotModal } from './components/modals/AiCopilotModal';
 import { RvSitePickerModal } from './components/modals/RvSitePickerModal';
 import { RvProfileModal } from './components/modals/RvProfileModal';
+import { AuthModal } from './components/modals/AuthModal';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -37,6 +38,7 @@ export default function App() {
 
   // Authentication State
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const isInitialSyncDone = useRef(false);
 
@@ -121,7 +123,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Phase 4: Initial Cloud Load, Guest-to-Cloud Migration & Real-Time Sync Subscription
+  // Initial Cloud Load, Guest-to-Cloud Migration & Real-Time Sync Subscription
   useEffect(() => {
     if (!user) return;
 
@@ -201,15 +203,6 @@ export default function App() {
       unsubscribeSync();
     };
   }, [user]);
-
-  const handleSignIn = async () => {
-    try {
-      await signInWithGoogle();
-    } catch (err: any) {
-      console.error("Google Sign-In Error:", err);
-      alert(err.message || "Failed to sign in with Google.");
-    }
-  };
 
   const handleSignOut = async () => {
     try {
@@ -476,7 +469,7 @@ export default function App() {
         profile={profile}
         onOpenProfile={() => setIsRvProfileOpen(true)}
         user={user}
-        onSignIn={handleSignIn}
+        onSignIn={() => setIsAuthModalOpen(true)}
         onSignOut={handleSignOut}
         isSyncing={isSyncing}
       />
@@ -573,6 +566,11 @@ export default function App() {
         onClose={() => setIsRvProfileOpen(false)}
         profile={profile}
         onSaveProfile={handleSaveProfile}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
       />
     </div>
   );
