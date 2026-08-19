@@ -118,7 +118,7 @@ export const Header: React.FC<HeaderProps> = ({
           onSignIn && (
             <button
               onClick={onSignIn}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 hover:border-emerald-500/50 px-3 py-1 sm:py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow-md shadow-emerald-950/50 hover:shadow-emerald-900/60 border border-emerald-500/40"
               title="Sign in to sync across devices"
             >
               <span>Sign In</span>
