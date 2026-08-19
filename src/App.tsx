@@ -533,6 +533,8 @@ export default function App() {
               onDeleteArrivalTask={(id) => setArrivalTasks(prev => prev.filter(t => t.id !== id))}
               onClearDepartureTasks={() => setDepartureTasks(INITIAL_DEPARTURE_TASKS)}
               onClearArrivalTasks={() => setArrivalTasks(INITIAL_ARRIVAL_TASKS)}
+              onReorderDepartureTasks={(newTasks) => setDepartureTasks(newTasks)}
+              onReorderArrivalTasks={(newTasks) => setArrivalTasks(newTasks)}
             />
           </div>
         </main>
