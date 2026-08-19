@@ -1,6 +1,10 @@
 import {
   signInWithPopup,
   GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   signOut,
   onAuthStateChanged,
   User
@@ -31,6 +35,44 @@ export async function signInWithGoogle(): Promise<AuthUser> {
     email: user.email,
     photoURL: user.photoURL
   };
+}
+
+/**
+ * Sign in using Email and Password
+ */
+export async function signInWithEmail(email: string, pass: string): Promise<AuthUser> {
+  const result = await signInWithEmailAndPassword(auth, email.trim(), pass);
+  const user = result.user;
+  return {
+    uid: user.uid,
+    displayName: user.displayName || user.email?.split('@')[0] || 'RV Traveler',
+    email: user.email,
+    photoURL: user.photoURL
+  };
+}
+
+/**
+ * Register a new account with Email and Password
+ */
+export async function registerWithEmail(email: string, pass: string, displayName?: string): Promise<AuthUser> {
+  const result = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+  const user = result.user;
+  if (displayName && displayName.trim()) {
+    await updateProfile(user, { displayName: displayName.trim() });
+  }
+  return {
+    uid: user.uid,
+    displayName: displayName?.trim() || user.email?.split('@')[0] || 'RV Traveler',
+    email: user.email,
+    photoURL: user.photoURL
+  };
+}
+
+/**
+ * Send Password Reset Email
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  await sendPasswordResetEmail(auth, email.trim());
 }
 
 /**
