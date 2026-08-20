@@ -269,37 +269,55 @@ export default function App() {
     }
   };
 
-  // Sync Checklists to LocalStorage & Cloud Firestore
+  // Debounced Sync Checklists to LocalStorage & Cloud Firestore
   useEffect(() => {
     localStorage.setItem('departure_tasks', JSON.stringify(departureTasks));
     localStorage.setItem('arrival_tasks', JSON.stringify(arrivalTasks));
-    if (user && isInitialSyncDone.current) {
+    if (!user || !isInitialSyncDone.current) return;
+
+    const timer = setTimeout(() => {
       saveUserChecklistsToCloud(user.uid, departureTasks, arrivalTasks).catch(err => console.error("Cloud checklists save error:", err));
-    }
+    }, 800);
+
+    return () => clearTimeout(timer);
   }, [departureTasks, arrivalTasks, user]);
 
-  // Sync Waypoints to LocalStorage & Cloud Firestore
+  // Debounced Sync Waypoints to LocalStorage & Cloud Firestore
   useEffect(() => {
     localStorage.setItem('rv_waypoints', JSON.stringify(waypoints));
-    if (user && isInitialSyncDone.current) {
+    if (!user || !isInitialSyncDone.current) return;
+
+    const timer = setTimeout(() => {
       saveUserWaypointsToCloud(user.uid, waypoints).catch(err => console.error("Cloud waypoints save error:", err));
-    }
+    }, 800);
+
+    return () => clearTimeout(timer);
   }, [waypoints, user]);
 
-  // Recalculate Waypoint Metrics when stops, origins, or departure times change
+  // Debounced Recalculate Waypoint Metrics (Wait 600ms after user pauses typing or changes stops)
   useEffect(() => {
-    if (!isGoogleLoaded) return;
-    waypoints.forEach((wp) => {
-      calculateWaypointMetricsService(wp, (calculatedWp) => {
-        setWaypoints(prev => prev.map(item => item.id === calculatedWp.id ? calculatedWp : item));
+    if (!isGoogleLoaded || waypoints.length === 0) return;
+
+    const timer = setTimeout(() => {
+      waypoints.forEach((wp) => {
+        // Only run routing calculation if origin and at least one destination are non-empty
+        const hasValidOrigin = !!wp.origin && wp.origin.trim().length > 2;
+        const hasValidStop = wp.stops && wp.stops.some(s => !!s.destination && s.destination.trim().length > 2);
+        if (hasValidOrigin && hasValidStop) {
+          calculateWaypointMetricsService(wp, (calculatedWp) => {
+            setWaypoints(prev => prev.map(item => item.id === calculatedWp.id ? calculatedWp : item));
+          });
+        }
       });
-    });
+    }, 600);
+
+    return () => clearTimeout(timer);
   }, [
     isGoogleLoaded,
     waypoints.map(w => `${w.origin}->${w.stops.map(s => `${s.destination}@${s.depHour}:${s.depMin}${s.depAmPm}`).join(',')}`).join('|')
   ]);
 
-  // Fetch Live Weather for Stops
+  // Debounced Fetch Live Weather for Stops
   const handleFetchWeather = useCallback(() => {
     setIsLoadingWeather(true);
     fetchLiveWeatherForStops(waypoints, destinationWeathers).then(newWeathers => {
@@ -311,8 +329,11 @@ export default function App() {
   }, [waypoints, destinationWeathers]);
 
   useEffect(() => {
-    handleFetchWeather();
-  }, [waypoints]);
+    const timer = setTimeout(() => {
+      handleFetchWeather();
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [waypoints.map(w => (w.stops || []).map(s => s.destination).join(',')).join('|')]);
 
   // Tab Switch Handler
   const handleTabChange = (newTab: 'intime' | 'router' | 'planner' | 'checklist') => {
