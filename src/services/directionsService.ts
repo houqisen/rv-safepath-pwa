@@ -62,7 +62,7 @@ export function calculateWaypointMetricsService(
           let stopDepTotalMins = depBaseH * 60 + depM;
 
           // For stops after stop 0: if departure was set before previous stop arrival, cascade departure to previous arrival
-          if (sIdx > 0 && prevArrivalTotalMins > 0 && stopDepTotalMins < prevArrivalTotalMins) {
+          if (sIdx > 0 && prevArrivalTotalMins !== undefined && stopDepTotalMins < prevArrivalTotalMins) {
             stopDepTotalMins = prevArrivalTotalMins;
             const newDepH24 = Math.floor(stopDepTotalMins / 60) % 24;
             depH = newDepH24 % 12 || 12;
