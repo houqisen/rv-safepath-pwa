@@ -350,7 +350,7 @@ export default function App() {
         stopsList = item.stops.map((s: any, sIdx: number) => ({
           id: Date.now() + idx * 100 + sIdx,
           destination: s.destination || '',
-          depHour: s.depHour !== undefined ? s.depHour : (sIdx === 0 ? 8 : 12),
+          depHour: s.depHour !== undefined ? s.depHour : (sIdx === 0 ? 8 : (11 + sIdx * 2) % 12 || 12),
           depMin: s.depMin !== undefined ? s.depMin : 0,
           depAmPm: s.depAmPm || (sIdx === 0 ? 'AM' : 'PM'),
           estMiles: 0,
