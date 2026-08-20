@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay } from '../../utils/dateUtils';
@@ -31,15 +31,15 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   onUpdateWaypoint,
   onRemoveWaypoint
 }) => {
-  const inputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const attachedInputsRef = useRef<Set<HTMLInputElement>>(new Set());
 
-  const setupPlaceAutocomplete = (inputEl: HTMLInputElement | null, onSelected: (addr: string) => void) => {
+  const attachAutocomplete = (inputEl: HTMLInputElement | null, onSelected: (addr: string) => void) => {
     if (!inputEl || !window.google || !window.google.maps || !window.google.maps.places) return;
-    if ((inputEl as any).__autocompleteAttached) return;
+    if (attachedInputsRef.current.has(inputEl)) return;
 
     try {
       const autocomplete = new window.google.maps.places.Autocomplete(inputEl);
-      (inputEl as any).__autocompleteAttached = true;
+      attachedInputsRef.current.add(inputEl);
 
       autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace();
@@ -127,7 +127,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
         </div>
       </div>
 
-      {/* Original 3-3-3 Metric Cards */}
+      {/* 3-3-3 Metric Cards */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="bg-slate-800/80 border border-slate-700/70 rounded-xl sm:rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row items-center sm:gap-3 text-center sm:text-left">
           <div className="p-1.5 sm:p-3 bg-emerald-500/20 text-emerald-400 rounded-lg sm:rounded-xl mb-1 sm:mb-0">
@@ -160,7 +160,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
         </div>
       </div>
 
-      {/* Waypoints List & Dual-Action Empty State */}
+      {/* Waypoints List */}
       <div className="space-y-3 sm:space-y-4">
         {waypoints.length === 0 ? (
           <div className="text-center py-12 px-4 bg-slate-800/40 rounded-2xl border border-slate-700/60 space-y-4 max-w-lg mx-auto">
@@ -245,12 +245,14 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                       <label className="block text-[11px] text-slate-400 mb-1">Starting Place (Origin)</label>
                       <input 
                         ref={(el) => {
-                          inputsRef.current[`origin_${wp.id}`] = el;
-                          setupPlaceAutocomplete(el, (addr) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: addr })));
+                          attachAutocomplete(el, (addr) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: addr })));
                         }}
                         type="text" 
                         value={wp.origin} 
-                        onChange={(e) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: e.target.value }))}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: val }));
+                        }}
                         placeholder="Starting place..." 
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
                       />
@@ -317,8 +319,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                   </label>
                                   <input 
                                     ref={(el) => {
-                                      inputsRef.current[`stop_${wp.id}_${stop.id}`] = el;
-                                      setupPlaceAutocomplete(el, (addr) => {
+                                      attachAutocomplete(el, (addr) => {
                                         onUpdateWaypoint(wp.id, (prev) => ({
                                           ...prev,
                                           stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
@@ -416,7 +417,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                               </div>
                             </div>
 
-                            {/* Stop Action Bar: Compact Weather Label Pill + RV Site Picker Button */}
+                            {/* Stop Action Bar */}
                             <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] flex items-center justify-between flex-wrap gap-2">
                               <div className="flex items-center gap-2 text-slate-300 flex-wrap">
                                 {stop.destination && (
