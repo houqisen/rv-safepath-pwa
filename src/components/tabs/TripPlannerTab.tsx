@@ -456,7 +456,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                         }}
                                         className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                                       >
-                                        {[0, 15, 30, 45].map(m => (
+                                        {Array.from(new Set([0, 15, 30, 45, currentDepM])).sort((a, b) => a - b).map(m => (
                                           <option key={m} value={m}>{m < 10 ? `0${m}` : m}</option>
                                         ))}
                                       </select>
