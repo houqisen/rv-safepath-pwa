@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay } from '../../utils/dateUtils';
@@ -16,6 +16,21 @@ interface TripPlannerTabProps {
   onClearAll: () => void;
   onUpdateWaypoint: (wpId: number, updater: (wp: Waypoint) => Waypoint) => void;
   onRemoveWaypoint: (wpId: number) => void;
+}
+
+function convertToTotalMinutes(hour: number, minute: number, ampm: string): number {
+  let h = hour % 12;
+  if (ampm === 'PM') h += 12;
+  return h * 60 + minute;
+}
+
+function convertFromTotalMinutes(totalMinutes: number): { hour: number; minute: number; ampm: 'AM' | 'PM' } {
+  const normMins = Math.max(0, Math.min(24 * 60 - 1, totalMinutes));
+  const h24 = Math.floor(normMins / 60) % 24;
+  const minute = normMins % 60;
+  const hour = h24 % 12 || 12;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  return { hour, minute, ampm };
 }
 
 export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
@@ -54,29 +69,77 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   };
 
   const handleAddStop = (wpId: number) => {
-    onUpdateWaypoint(wpId, (wp) => ({
-      ...wp,
-      stops: [
-        ...wp.stops,
-        {
-          id: Date.now(),
-          destination: '',
-          depHour: 12,
-          depMin: 0,
-          depAmPm: 'PM',
-          estMiles: 0,
-          estHours: 0,
-          arrivalHour: 15,
-          arrivalMinute: 0
-        }
-      ]
-    }));
+    onUpdateWaypoint(wpId, (wp) => {
+      const stops = wp.stops || [];
+      const lastStop = stops[stops.length - 1];
+
+      let defHour = 12;
+      let defMin = 0;
+      let defAmPm: 'AM' | 'PM' = 'PM';
+
+      if (lastStop && lastStop.arrivalHour !== undefined) {
+        // Default new stop's departure time to preceding stop's arrival time (+15 mins break, rounded to 15 min increments)
+        const arrMins = (lastStop.arrivalHour * 60) + (lastStop.arrivalMinute || 0);
+        const nextDepMins = Math.min(23 * 60 + 45, Math.ceil((arrMins + 15) / 15) * 15);
+        const parsed = convertFromTotalMinutes(nextDepMins);
+        defHour = parsed.hour;
+        defMin = parsed.minute;
+        defAmPm = parsed.ampm;
+      }
+
+      return {
+        ...wp,
+        stops: [
+          ...stops,
+          {
+            id: Date.now(),
+            destination: '',
+            depHour: defHour,
+            depMin: defMin,
+            depAmPm: defAmPm,
+            estMiles: 0,
+            estHours: 0,
+            arrivalHour: (defAmPm === 'PM' ? (defHour % 12 + 12) : (defHour % 12)) + 2,
+            arrivalMinute: defMin
+          }
+        ]
+      };
+    });
   };
 
   const handleRemoveStop = (wpId: number, stopId: number) => {
     onUpdateWaypoint(wpId, (wp) => ({
       ...wp,
       stops: wp.stops.filter(s => s.id !== stopId)
+    }));
+  };
+
+  const handleUpdateStopDepartureTime = (
+    wpId: number,
+    stopId: number,
+    sIdx: number,
+    newHour: number,
+    newMin: number,
+    newAmPm: 'AM' | 'PM',
+    prevStopArrivalMins?: number
+  ) => {
+    let reqMins = convertToTotalMinutes(newHour, newMin, newAmPm);
+
+    // Enforce that stop i (i > 0) departure CANNOT be earlier than previous stop arrival
+    if (sIdx > 0 && prevStopArrivalMins !== undefined && reqMins < prevStopArrivalMins) {
+      reqMins = prevStopArrivalMins;
+    }
+
+    const { hour, minute, ampm } = convertFromTotalMinutes(reqMins);
+
+    onUpdateWaypoint(wpId, (wp) => ({
+      ...wp,
+      stops: (wp.stops || []).map(s => s.id === stopId ? {
+        ...s,
+        depHour: hour,
+        depMin: minute,
+        depAmPm: ampm
+      } : s)
     }));
   };
 
@@ -273,16 +336,31 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
 
                       {(wp.stops || []).map((stop, sIdx, arr) => {
                         const prevLoc = sIdx === 0 ? wp.origin : arr[sIdx - 1].destination;
+                        const prevStop = sIdx > 0 ? arr[sIdx - 1] : null;
+                        const prevStopArrH = prevStop?.arrivalHour !== undefined ? prevStop.arrivalHour : 12;
+                        const prevStopArrM = prevStop?.arrivalMinute !== undefined ? prevStop.arrivalMinute : 0;
+                        const prevStopArrTotalMins = sIdx > 0 ? (prevStopArrH * 60 + prevStopArrM) : undefined;
+                        const formattedPrevArrTime = sIdx > 0 ? `${prevStopArrH % 12 || 12}:${prevStopArrM < 10 ? '0' : ''}${prevStopArrM} ${prevStopArrH >= 12 ? 'PM' : 'AM'}` : null;
+
                         const stopArrH = stop.arrivalHour !== undefined ? stop.arrivalHour : 15;
                         const stopArrM = stop.arrivalMinute !== undefined ? stop.arrivalMinute : 0;
                         const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
                         const weatherInfo = stop.destination ? destinationWeathers[stop.destination] : null;
                         const isLastStopOfWaypoint = sIdx === (arr.length - 1);
 
+                        const currentDepH = stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 12);
+                        const currentDepM = stop.depMin !== undefined ? stop.depMin : 0;
+                        const currentDepAP = stop.depAmPm || (sIdx === 0 ? 'AM' : 'PM');
+                        const currentDepTotalMins = convertToTotalMinutes(currentDepH, currentDepM, currentDepAP);
+
+                        const layoverMins = sIdx > 0 && prevStopArrTotalMins !== undefined && currentDepTotalMins >= prevStopArrTotalMins
+                          ? currentDepTotalMins - prevStopArrTotalMins
+                          : 0;
+
                         return (
                           <div key={stop.id} className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[11px] font-bold text-emerald-400">Stop {sIdx + 1}</span>
                                 {isLastStopOfWaypoint ? (
                                   <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-semibold">
@@ -291,6 +369,12 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                 ) : (
                                   <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded font-medium">
                                     ☕ Mid-day / Fuel Pause
+                                  </span>
+                                )}
+
+                                {sIdx > 0 && layoverMins > 0 && (
+                                  <span className="text-[10px] bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded font-medium" title={`Layover at Stop ${sIdx} before departure`}>
+                                    ⏱️ {layoverMins >= 60 ? `${Math.floor(layoverMins / 60)}h ${layoverMins % 60 > 0 ? `${layoverMins % 60}m` : ''}` : `${layoverMins}m`} break
                                   </span>
                                 )}
                               </div>
@@ -342,16 +426,20 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
 
                                 <div className="flex items-center gap-2 shrink-0">
                                   <div>
-                                    <label className="block text-[10px] text-slate-400 mb-1">Departure Time</label>
+                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                      <label className="text-[10px] text-slate-400">Departure Time</label>
+                                      {sIdx > 0 && formattedPrevArrTime && (
+                                        <span className="text-[9px] text-emerald-400 font-medium" title="Earliest allowed departure">
+                                          (&ge; {formattedPrevArrTime})
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="flex items-center gap-1">
                                       <select 
-                                        value={stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 13)} 
+                                        value={currentDepH} 
                                         onChange={(e) => {
                                           const val = parseInt(e.target.value, 10);
-                                          onUpdateWaypoint(wp.id, (prev) => ({
-                                            ...prev,
-                                            stops: prev.stops.map(s => s.id === stop.id ? { ...s, depHour: val } : s)
-                                          }));
+                                          handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, val, currentDepM, currentDepAP as 'AM' | 'PM', prevStopArrTotalMins);
                                         }}
                                         className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                                       >
@@ -361,13 +449,10 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                       </select>
                                       <span className="text-slate-400 font-bold">:</span>
                                       <select 
-                                        value={stop.depMin !== undefined ? stop.depMin : 0} 
+                                        value={currentDepM} 
                                         onChange={(e) => {
                                           const val = parseInt(e.target.value, 10);
-                                          onUpdateWaypoint(wp.id, (prev) => ({
-                                            ...prev,
-                                            stops: prev.stops.map(s => s.id === stop.id ? { ...s, depMin: val } : s)
-                                          }));
+                                          handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, val, currentDepAP as 'AM' | 'PM', prevStopArrTotalMins);
                                         }}
                                         className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                                       >
@@ -379,24 +464,18 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                         <button 
                                           type="button" 
                                           onClick={() => {
-                                            onUpdateWaypoint(wp.id, (prev) => ({
-                                              ...prev,
-                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, depAmPm: 'AM' } : s)
-                                            }));
+                                            handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, currentDepM, 'AM', prevStopArrTotalMins);
                                           }} 
-                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${(!stop.depAmPm || stop.depAmPm === 'AM') ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${currentDepAP === 'AM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                                         >
                                           AM
                                         </button>
                                         <button 
                                           type="button" 
                                           onClick={() => {
-                                            onUpdateWaypoint(wp.id, (prev) => ({
-                                              ...prev,
-                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, depAmPm: 'PM' } : s)
-                                            }));
+                                            handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, currentDepM, 'PM', prevStopArrTotalMins);
                                           }} 
-                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${stop.depAmPm === 'PM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${currentDepAP === 'PM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                                         >
                                           PM
                                         </button>
