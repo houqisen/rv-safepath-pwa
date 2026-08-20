@@ -548,6 +548,34 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
             );
           })
         )}
+
+        {/* Bottom Action Bar for Long Itineraries */}
+        {waypoints.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 pb-4 bg-slate-800/60 rounded-2xl p-3.5 sm:p-4 border border-slate-700/70 shadow-lg">
+            <div className="text-xs text-slate-400 flex items-center gap-2">
+              <span className="bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded text-[11px]">
+                {waypoints.length} {waypoints.length === 1 ? 'Travel Day' : 'Travel Days'}
+              </span>
+              <span>Ready to add another stop or re-plan?</span>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+              <button 
+                onClick={onOpenAiCopilot} 
+                className="flex-1 sm:flex-none bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-500 hover:to-sky-500 text-white font-semibold px-3.5 sm:px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition"
+              >
+                <i className="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Plan with AI
+              </button>
+
+              <button 
+                onClick={onAddWaypoint} 
+                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3.5 sm:px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition"
+              >
+                <i className="fa-solid fa-plus"></i> Add Waypoint
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
