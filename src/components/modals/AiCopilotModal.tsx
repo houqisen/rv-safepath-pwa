@@ -11,7 +11,7 @@ interface AiCopilotModalProps {
   profile: RvProfile;
   userLocationName: string;
   hasExistingWaypoints: boolean;
-  onApplyPlan: (plan: AiPlanPreview, mode: 'replace' | 'append') => void;
+  onApplyPlan: (plan: AiPlanPreview, mode: 'replace' | 'append', startDate?: string) => void;
 }
 
 export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
@@ -72,7 +72,10 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
         customPrompt: aiCustomPrompt,
         profile
       });
-      setGeneratedPlanPreview(plan);
+      setGeneratedPlanPreview({
+        ...plan,
+        tripStartDate: aiDepartureDate
+      });
     } catch (err: any) {
       setAiErrorMessage(err.message || "Failed to generate plan.");
     } finally {
@@ -273,19 +276,32 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2 bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/70">
-                  <label className="block text-slate-300 font-semibold text-xs">Describe Your Dream RV Trip</label>
-                  <textarea
-                    rows={5}
-                    value={aiCustomPrompt}
-                    onChange={(e) => setAiCustomPrompt(e.target.value)}
-                    placeholder="e.g., I want to take 7 days to Denver and back home with my RV. Note: every day I don't want to drive more than 5 hours unless it is impossible to complete within 7 days."
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 focus:border-emerald-500"
-                    required
-                  />
-                  <p className="text-[11px] text-slate-400 italic">
-                    The AI automatically detects round-trip intents ("and back home"), groups daytime breaks as stops, and calculates time-budget pacing.
-                  </p>
+                <div className="space-y-3 bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/70">
+                  <div>
+                    <label className="block text-slate-300 font-semibold text-xs mb-1">Describe Your Dream RV Trip</label>
+                    <textarea
+                      rows={4}
+                      value={aiCustomPrompt}
+                      onChange={(e) => setAiCustomPrompt(e.target.value)}
+                      placeholder="e.g., I want to take 7 days to Denver and back home with my RV. Note: every day I don't want to drive more than 5 hours unless it is impossible to complete within 7 days."
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 focus:border-emerald-500"
+                      required
+                    />
+                    <p className="text-[11px] text-slate-400 italic mt-1">
+                      The AI automatically detects round-trip intents ("and back home"), groups daytime breaks as stops, and calculates time-budget pacing.
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800">
+                    <label className="block text-slate-400 mb-1 text-[11px] font-medium">Trip Start Date (Departure)</label>
+                    <input
+                      type="date"
+                      value={aiDepartureDate}
+                      onChange={(e) => setAiDepartureDate(e.target.value)}
+                      className="w-full sm:w-1/2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:border-emerald-500"
+                      required
+                    />
+                  </div>
                 </div>
               )}
 
@@ -403,7 +419,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                 {hasExistingWaypoints && (
                   <button
                     type="button"
-                    onClick={() => { onApplyPlan(generatedPlanPreview, 'append'); onClose(); setGeneratedPlanPreview(null); }}
+                    onClick={() => { onApplyPlan(generatedPlanPreview, 'append', generatedPlanPreview.tripStartDate || aiDepartureDate); onClose(); setGeneratedPlanPreview(null); }}
                     className="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5"
                   >
                     <i className="fa-solid fa-plus"></i> Append to Current Plan
@@ -411,7 +427,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                 )}
                 <button
                   type="button"
-                  onClick={() => { onApplyPlan(generatedPlanPreview, 'replace'); onClose(); setGeneratedPlanPreview(null); }}
+                  onClick={() => { onApplyPlan(generatedPlanPreview, 'replace', generatedPlanPreview.tripStartDate || aiDepartureDate); onClose(); setGeneratedPlanPreview(null); }}
                   className="w-full sm:w-auto px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5"
                 >
                   <i className="fa-solid fa-check"></i> Replace Current Itinerary
