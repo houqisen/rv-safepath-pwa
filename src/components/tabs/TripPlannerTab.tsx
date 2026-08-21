@@ -72,6 +72,21 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
     }
   };
 
+  const handleStartDateChange = (val: string) => {
+    if (!val) {
+      onUpdateTripStartDate && onUpdateTripStartDate('');
+      return;
+    }
+    // Only propagate valid dates with a 4-digit year >= 2026
+    const parts = val.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      if (parts[0].length === 4 && year >= 2026) {
+        onUpdateTripStartDate && onUpdateTripStartDate(val);
+      }
+    }
+  };
+
   const handleAddStop = (wpId: number) => {
     onUpdateWaypoint(wpId, (wp) => {
       const stops = wp.stops || [];
@@ -242,7 +257,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
           <div className="flex items-center gap-2 self-start sm:self-center">
             <input
               type="date"
-              onChange={(e) => onUpdateTripStartDate && onUpdateTripStartDate(e.target.value)}
+              min="2026-01-01"
+              onChange={(e) => handleStartDateChange(e.target.value)}
               className="bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-1.5 text-xs text-amber-200 focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner"
             />
           </div>
@@ -312,12 +328,21 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                     </button>
 
                     {wIdx === 0 && (
-                      <div className={`flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-xl border ${!tripStartDate ? 'border-amber-500/60 ring-1 ring-amber-500/30' : 'border-emerald-500/40'} shadow-sm`}>
+                      <div 
+                        onClick={(e) => {
+                          const input = e.currentTarget.querySelector('input');
+                          if (input && 'showPicker' in input) {
+                            try { input.showPicker(); } catch {}
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-xl border ${!tripStartDate ? 'border-amber-500/60 ring-1 ring-amber-500/30' : 'border-emerald-500/40'} shadow-sm cursor-pointer`}
+                      >
                         <i className={`fa-regular fa-calendar ${!tripStartDate ? 'text-amber-400' : 'text-emerald-400'} text-xs`}></i>
                         <input 
                           type="date" 
+                          min="2026-01-01"
                           value={tripStartDate || ''} 
-                          onChange={(e) => onUpdateTripStartDate && onUpdateTripStartDate(e.target.value)}
+                          onChange={(e) => handleStartDateChange(e.target.value)}
                           className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${!tripStartDate ? 'text-amber-300' : 'text-emerald-300'}`}
                           title="Click to edit Trip Start Date (cascades to all waypoints)"
                         />
