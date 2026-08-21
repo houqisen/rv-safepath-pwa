@@ -30,6 +30,12 @@ export interface AiPlanPreview {
   isFeasible: boolean;
   feasibilityWarning: string | null;
   waypoints: any[];
+  tripStartDate?: string;
+}
+
+export interface ItineraryCloudData {
+  waypoints: Waypoint[];
+  tripStartDate?: string;
 }
 
 export interface DestinationWeather {
