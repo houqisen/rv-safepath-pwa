@@ -52,6 +52,31 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
   const safeFuelRange = safeMpgDisplay * 25;
   const { diffDays: calculatedDays, season: calculatedSeason } = calculateTripDurationAndSeason(aiDepartureDate, aiReturnDate);
 
+  const handleDepartureDateChange = (val: string) => {
+    if (!val) {
+      setAiDepartureDate('');
+      return;
+    }
+    const parts = val.split('-');
+    if (parts.length === 3 && parts[0].length === 4 && parseInt(parts[0], 10) >= 2026) {
+      setAiDepartureDate(val);
+      if (aiReturnDate && aiReturnDate < val) {
+        setAiReturnDate(val);
+      }
+    }
+  };
+
+  const handleReturnDateChange = (val: string) => {
+    if (!val) {
+      setAiReturnDate('');
+      return;
+    }
+    const parts = val.split('-');
+    if (parts.length === 3 && parts[0].length === 4 && parseInt(parts[0], 10) >= 2026) {
+      setAiReturnDate(val);
+    }
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsGeneratingTrip(true);
@@ -182,8 +207,9 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                       <label className="block text-slate-400 mb-1">Departure Date</label>
                       <input
                         type="date"
+                        min="2026-01-01"
                         value={aiDepartureDate}
-                        onChange={(e) => setAiDepartureDate(e.target.value)}
+                        onChange={(e) => handleDepartureDateChange(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:border-emerald-500"
                         required
                       />
@@ -196,8 +222,8 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                       <input
                         type="date"
                         value={aiReturnDate}
-                        min={aiDepartureDate}
-                        onChange={(e) => setAiReturnDate(e.target.value)}
+                        min={aiDepartureDate || "2026-01-01"}
+                        onChange={(e) => handleReturnDateChange(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:border-emerald-500"
                         required
                       />
@@ -296,8 +322,9 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
                     <label className="block text-slate-400 mb-1 text-[11px] font-medium">Trip Start Date (Departure)</label>
                     <input
                       type="date"
+                      min="2026-01-01"
                       value={aiDepartureDate}
-                      onChange={(e) => setAiDepartureDate(e.target.value)}
+                      onChange={(e) => handleDepartureDateChange(e.target.value)}
                       className="w-full sm:w-1/2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:border-emerald-500"
                       required
                     />
