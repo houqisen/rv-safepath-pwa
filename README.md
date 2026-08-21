@@ -9,7 +9,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore%20%26%20Auth-FFCA28?style=flat&logo=firebase)](https://firebase.google.com/)
 [![Gemini AI](https://img.shields.io/badge/Gemini%20AI-Flash-8E75B2?style=flat&logo=google)](https://aistudio.google.com/)
 
-> **RV SafePath** is a Progressive Web App (PWA) designed specifically for RVers, camper vans, and travel trailers. It pairs your rig's exact dimensions (*height clearance, combined length, gross weight, and towing MPG*) with Google Maps, Cloud Firestore, and Gemini AI to provide low-clearance safe routing, real-time facility discovery, towing weather hazard alerts, automated multi-day trip itineraries, and cross-device cloud synchronization.
+> **RV SafePath** is a Progressive Web App (PWA) designed specifically for RVers, camper vans, and travel trailers. It pairs your rig's exact dimensions (*height clearance, combined length, gross weight, and towing MPG*) with Google Maps, Cloud Firestore, and Gemini AI to provide low-clearance safe routing, real-time facility discovery, towing weather hazard alerts, automated multi-day trip itineraries with exact cascading dates, and cross-device cloud synchronization.
 
 ---
 
@@ -29,7 +29,14 @@
 - **Interactive Map Markers:** Custom vector teardrop pin markers with category color-coding and popup InfoWindows.
 - **One-Click Navigation:** Directly launches turn-by-turn directions in Google Maps.
 
-### 🤖 3. Gemini AI Trip Copilot
+### 📅 3. Dynamic Itinerary Planner & Cascading Dates
+- **Exact Calendar Dates on Every Waypoint:** Automatically calculates and displays real calendar dates for each travel day (e.g. `DAY 1 · August 20 (Thu)`, `DAY 3 · August 22 (Sat)`).
+- **Intelligent Date Cascading:** Waypoint dates dynamically calculate based on the departure date plus cumulative previous stay nights ($\text{Date}_i = \text{Date}_{i-1} + \text{StayNights}_{i-1}$).
+- **Editable Day 1 Start Date:** Change your trip departure date on Day 1 at any time; all subsequent waypoints immediately update and shift accordingly.
+- **Missing Date Detection & Recovery:** Smart notification banner automatically prompts for a departure date on manual or legacy itineraries.
+- **Dual Action Navigation:** Top and bottom action bars (**"Plan with AI"** and **"Add Waypoint"**) allow seamless itinerary modification on long multi-day trips without tedious scrolling.
+
+### 🤖 4. Gemini AI Trip Copilot
 - **Guided & Custom Itinerary Modes:** Plan multi-day road trips from simple destination lists (e.g., `Glacier NP, MT -> Yellowstone NP, WY`) or freeform prompts.
 - **Seasonal & Climate Awareness:** Automatically detects travel season (Spring, Summer, Fall, Winter) and adapts campground selections and mountain pass recommendations accordingly.
 - **Driving Feasibility Evaluation:** Validates whether total driving distances are realistic within your target max daily driving hours (e.g., ~4–5 hours/day) and provides pacing suggestions if limits are exceeded.
@@ -37,7 +44,7 @@
 - **Cascading Stop Schedules:** Real-time cascading calculation of stop arrival times and day Camp Arrival from custom departure times.
 - **Round-Trip Support:** Automatically schedules the return leg to your starting point with 0 stay nights on the final transit stop.
 
-### 🏕️ 4. Intelligent RV Site Picker (Side-by-Side Comparison)
+### 🏕️ 5. Intelligent RV Site Picker (Side-by-Side Comparison)
 - On-demand campsite recommendation for any stop on your route.
 - Evaluates and ranks the **Top 3 Verified RV Parks** matched to your vehicle length, clearance, and hookup needs.
 - **9-Factor Comparison Matrix:**
@@ -52,20 +59,20 @@
   9. *Best For / Verdict*
 - **One-Click Apply:** Directly populates the stop with the campground name, address, and access notes.
 
-### ☁️ 5. Cloud Firestore Real-Time Sync & User Authentication
+### ☁️ 6. Cloud Firestore Real-Time Sync & User Authentication
 - **User Authentication:** Sign in with 1-click Google OAuth or Email & Password (with password reset support).
 - **Cross-Device Live Sync:** Uses Firestore real-time snapshot listeners to sync changes instantly across laptops, phones, and tablets without refreshing.
 - **Guest-to-Cloud Auto Migration:** Seamlessly migrates local guest trips and rig profiles into the user's cloud account upon first login.
 - **Offline Persistence:** Firestore IndexedDB caching keeps data available and editable even in remote campgrounds with zero cell reception.
 
-### ⛅ 6. Live Towing Weather & Hazard Radar
+### ⛅ 7. Live Towing Weather & Hazard Radar
 - Live weather forecasts for every stop along your itinerary via Open-Meteo with geocoding fallback.
 - **Automated Towing Hazard Alerts:**
   - ⚠️ **High Crosswind Advisory:** Flags dangerous crosswinds (≥25 mph) that increase trailer sway risk.
   - ❄️ **Freeze Warning:** Alerts when temperatures drop below 32°F (0°C) to protect RV plumbing.
   - ⛈️ **Severe Storm Warning:** Flags active thunderstorms, hail, or snow accumulation.
 
-### ✅ 7. Interactive Departure & Setup Checklists
+### ✅ 8. Interactive Departure & Setup Checklists
 - Pre-loaded, reorderable safety task lists for **Pre-Departure** and **Camp Arrival / Setup**.
 - Covers critical steps including slide-out retraction, leveling jacks, surge protector pedestal testing, water pressure regulator attachment, and safety chains.
 
@@ -85,50 +92,64 @@
 ## 📂 Modular Project Structure
 
 ```
-src/
-├── types/
-│   ├── rv.ts                     # RvProfile definition & rig configuration
-│   ├── itinerary.ts              # Waypoint, WaypointStop, AiPlanPreview, DestinationWeather
-│   ├── places.ts                 # FacilityItem, PlaceCategory, RouteSummary, RvSitePickerResults
-│   └── checklist.ts              # ChecklistTask definition
+rv-safepath-pwa/
+├── public/                       # Static PWA assets & service worker
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── manifest.json
+│   └── service-worker.js
 │
-├── constants/
-│   ├── mapStyles.ts              # DARK_MAP_STYLE (custom dark Google Maps theme)
-│   ├── profileDefaults.ts        # DEFAULT_PROFILE & initial specs
-│   └── checklistDefaults.ts      # INITIAL_DEPARTURE_TASKS, INITIAL_ARRIVAL_TASKS
-│
-├── utils/
-│   ├── dateUtils.ts              # calculateTripDurationAndSeason, getWaypointDisplayDay
-│   ├── addressUtils.ts           # formatResolvedPlaceAddress (POIs & parks formatting), parseDestinationList
-│   └── jsonUtils.ts              # normalizeWaypoints, normalizeSiteResults
-│
-├── services/
-│   ├── firebase.ts               # Firebase App, Auth & Firestore initialization with offline persistence
-│   ├── authService.ts            # Google OAuth, Email/Password sign-in, account creation & password reset
-│   ├── cloudStorageService.ts    # Cloud Firestore CRUD & real-time snapshot subscriber for profiles/trips/checklists
-│   ├── geminiService.ts          # generateAiTripPlan, fetchRvSitePickerRecommendations (Gemini API cascade)
-│   ├── weatherService.ts         # fetchLiveWeatherForStops, Open-Meteo geocoding & hazard alerts
-│   ├── placesService.ts          # searchNearbyPlaces, bulk propane verification & fuel pricing
-│   └── directionsService.ts      # calculateWaypointMetricsService (cascading stop times), calculateSafeRouteService
-│
-├── components/
-│   ├── layout/
-│   │   ├── Header.tsx            # App branding, clearance badge, Auth dropdown & Emerald Sign In button
-│   │   └── Sidebar.tsx           # Tab switcher navigation & Active RV Specs card
+├── src/
+│   ├── types/
+│   │   ├── rv.ts                 # RvProfile definition & rig configuration
+│   │   ├── itinerary.ts          # Waypoint, WaypointStop, AiPlanPreview, ItineraryCloudData
+│   │   ├── places.ts             # FacilityItem, PlaceCategory, RouteSummary, RvSitePickerResults
+│   │   └── checklist.ts          # ChecklistTask definition
 │   │
-│   ├── tabs/
-│   │   ├── InTimeFinderTab.tsx   # Google Map + nearby POI cards (Fuel, Propane, Dump, Camps, Parking)
-│   │   ├── SafeRouterTab.tsx     # A-to-B safe router, polyline rendering & route summary card
-│   │   ├── TripPlannerTab.tsx    # 3-3-3 metrics, stops scheduler, departure time inputs, weather tags
-│   │   └── ChecklistsTab.tsx     # Pre-departure & Camp Arrival interactive checklist cards
+│   ├── constants/
+│   │   ├── mapStyles.ts          # DARK_MAP_STYLE (custom dark Google Maps theme)
+│   │   ├── profileDefaults.ts    # DEFAULT_PROFILE & initial specs
+│   │   └── checklistDefaults.ts  # INITIAL_DEPARTURE_TASKS, INITIAL_ARRIVAL_TASKS
 │   │
-│   └── modals/
-│       ├── AuthModal.tsx         # Unified authentication modal (1-Click Google + Email/Password + Reset)
-│       ├── AiCopilotModal.tsx    # Gemini AI trip planner (Guided/Custom, Plan preview, Append/Replace)
-│       ├── RvSitePickerModal.tsx # Top 3 RV campsite comparison table (RV Profile Matched)
-│       └── RvProfileModal.tsx    # Rig dimensions, towing MPG, propane bins, memberships & hookups
+│   ├── utils/
+│   │   ├── dateUtils.ts          # getWaypointDate, formatWaypointDateDisplay, getWaypointDisplayDay
+│   │   ├── addressUtils.ts       # formatResolvedPlaceAddress (POIs & parks formatting), parseDestinationList
+│   │   └── jsonUtils.ts          # normalizeWaypoints, normalizeSiteResults
+│   │
+│   ├── services/
+│   │   ├── firebase.ts           # Firebase App, Auth & Firestore initialization with offline persistence
+│   │   ├── authService.ts        # Google OAuth, Email/Password sign-in, account creation & password reset
+│   │   ├── cloudStorageService.ts# Cloud Firestore CRUD & real-time snapshot subscriber for profiles/trips/checklists
+│   │   ├── geminiService.ts      # generateAiTripPlan, fetchRvSitePickerRecommendations (Gemini API cascade)
+│   │   ├── weatherService.ts     # fetchLiveWeatherForStops, Open-Meteo geocoding & hazard alerts
+│   │   ├── placesService.ts      # searchNearbyPlaces, bulk propane verification & fuel pricing
+│   │   └── directionsService.ts  # calculateWaypointMetricsService (cascading stop times), calculateSafeRouteService
+│   │
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Header.tsx        # App branding, clearance badge, Auth dropdown & Emerald Sign In button
+│   │   │   └── Sidebar.tsx       # Tab switcher navigation & Active RV Specs card
+│   │   │
+│   │   ├── tabs/
+│   │   │   ├── InTimeFinderTab.tsx# Google Map + nearby POI cards (Fuel, Propane, Dump, Camps, Parking)
+│   │   │   ├── SafeRouterTab.tsx # A-to-B safe router, polyline rendering & route summary card
+│   │   │   ├── TripPlannerTab.tsx# 3-3-3 metrics, cascading dates, Day 1 editor, dual action bars
+│   │   │   └── ChecklistsTab.tsx # Pre-departure & Camp Arrival interactive checklist cards
+│   │   │
+│   │   └── modals/
+│   │       ├── AuthModal.tsx     # Unified authentication modal (1-Click Google + Email/Password + Reset)
+│   │       ├── AiCopilotModal.tsx# Gemini AI trip planner (Guided/Custom, Departure date picker, Append/Replace)
+│   │       ├── RvSitePickerModal.tsx # Top 3 RV campsite comparison table (RV Profile Matched)
+│   │       └── RvProfileModal.tsx# Rig dimensions, towing MPG, propane bins, memberships & hookups
+│   │
+│   └── App.tsx                   # Root application orchestrator, tripStartDate state & cloud debouncing
 │
-└── App.tsx                       # Clean root application orchestrator & state manager
+├── index.html
+├── package.json
+├── postcss.config.js
+├── tailwind.config.js
+├── vite.config.js
+└── README.md
 ```
 
 ---
