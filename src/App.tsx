@@ -66,6 +66,14 @@ export default function App() {
     }
   });
 
+  const [tripStartDate, setTripStartDate] = useState<string>(() => {
+    try {
+      return localStorage.getItem('rv_trip_start_date') || '';
+    } catch {
+      return '';
+    }
+  });
+
   // Weather State
   const [destinationWeathers, setDestinationWeathers] = useState<Record<string, DestinationWeather>>({});
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
@@ -142,13 +150,17 @@ export default function App() {
           await saveUserProfileToCloud(user.uid, profile);
         }
 
-        // 2. Load or migrate Itinerary Waypoints
-        const cloudWaypoints = await loadUserWaypointsFromCloud(user.uid);
-        if (cloudWaypoints && isMounted) {
-          setWaypoints(cloudWaypoints);
-          localStorage.setItem('rv_waypoints', JSON.stringify(cloudWaypoints));
-        } else if (!cloudWaypoints && waypoints.length > 0) {
-          await saveUserWaypointsToCloud(user.uid, waypoints);
+        // 2. Load or migrate Itinerary Waypoints & Start Date
+        const cloudItinerary = await loadUserWaypointsFromCloud(user.uid);
+        if (cloudItinerary && isMounted) {
+          setWaypoints(cloudItinerary.waypoints);
+          localStorage.setItem('rv_waypoints', JSON.stringify(cloudItinerary.waypoints));
+          if (cloudItinerary.tripStartDate) {
+            setTripStartDate(cloudItinerary.tripStartDate);
+            localStorage.setItem('rv_trip_start_date', cloudItinerary.tripStartDate);
+          }
+        } else if (!cloudItinerary && waypoints.length > 0) {
+          await saveUserWaypointsToCloud(user.uid, waypoints, tripStartDate);
         }
 
         // 3. Load or migrate Checklists
@@ -182,10 +194,14 @@ export default function App() {
           localStorage.setItem('rv_profile', JSON.stringify(updatedProf));
         }
       },
-      onWaypointsUpdate: (updatedWps) => {
+      onWaypointsUpdate: (updatedWps, updatedStartDate) => {
         if (isMounted && isInitialSyncDone.current) {
           setWaypoints(updatedWps);
           localStorage.setItem('rv_waypoints', JSON.stringify(updatedWps));
+          if (updatedStartDate !== undefined) {
+            setTripStartDate(updatedStartDate);
+            localStorage.setItem('rv_trip_start_date', updatedStartDate);
+          }
         }
       },
       onChecklistsUpdate: ({ departureTasks: dTasks, arrivalTasks: aTasks }) => {
@@ -282,17 +298,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [departureTasks, arrivalTasks, user]);
 
-  // Debounced Sync Waypoints to LocalStorage & Cloud Firestore
+  // Debounced Sync Waypoints & Start Date to LocalStorage & Cloud Firestore
   useEffect(() => {
     localStorage.setItem('rv_waypoints', JSON.stringify(waypoints));
+    localStorage.setItem('rv_trip_start_date', tripStartDate);
     if (!user || !isInitialSyncDone.current) return;
 
     const timer = setTimeout(() => {
-      saveUserWaypointsToCloud(user.uid, waypoints).catch(err => console.error("Cloud waypoints save error:", err));
+      saveUserWaypointsToCloud(user.uid, waypoints, tripStartDate).catch(err => console.error("Cloud waypoints save error:", err));
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [waypoints, user]);
+  }, [waypoints, tripStartDate, user]);
 
   // Debounced Recalculate Waypoint Metrics (Wait 600ms after user pauses typing or changes stops)
   useEffect(() => {
@@ -343,7 +360,11 @@ export default function App() {
   };
 
   // AI Copilot Plan Handler
-  const handleApplyAiPlan = (plan: AiPlanPreview, mode: 'replace' | 'append') => {
+  const handleApplyAiPlan = (plan: AiPlanPreview, mode: 'replace' | 'append', startDate?: string) => {
+    if (startDate) {
+      setTripStartDate(startDate);
+      localStorage.setItem('rv_trip_start_date', startDate);
+    }
     const newWaypoints: Waypoint[] = plan.waypoints.map((item: any, idx: number) => {
       let stopsList: WaypointStop[] = [];
       if (item.stops && Array.isArray(item.stops) && item.stops.length > 0) {
@@ -528,6 +549,11 @@ export default function App() {
           <div className={`${activeTab === 'planner' ? 'flex' : 'hidden'} flex-1 h-full w-full overflow-y-auto`}>
             <TripPlannerTab
               waypoints={waypoints}
+              tripStartDate={tripStartDate}
+              onUpdateTripStartDate={(dateStr) => {
+                setTripStartDate(dateStr);
+                localStorage.setItem('rv_trip_start_date', dateStr);
+              }}
               destinationWeathers={destinationWeathers}
               profile={profile}
               isLoadingWeather={isLoadingWeather}
