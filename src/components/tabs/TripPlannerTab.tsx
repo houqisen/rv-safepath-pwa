@@ -1,11 +1,13 @@
 import React, { useRef } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, DestinationWeather } from '../../types/itinerary';
-import { getWaypointDisplayDay } from '../../utils/dateUtils';
+import { getWaypointDisplayDay, getWaypointDate, formatWaypointDateDisplay } from '../../utils/dateUtils';
 import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
 
 interface TripPlannerTabProps {
   waypoints: Waypoint[];
+  tripStartDate?: string;
+  onUpdateTripStartDate?: (dateStr: string) => void;
   destinationWeathers: Record<string, DestinationWeather>;
   profile: RvProfile;
   isLoadingWeather?: boolean;
@@ -35,6 +37,8 @@ function convertFromTotalMinutes(totalMinutes: number): { hour: number; minute: 
 
 export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   waypoints,
+  tripStartDate,
+  onUpdateTripStartDate,
   destinationWeathers,
   profile,
   isLoadingWeather = false,
@@ -223,6 +227,28 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
         </div>
       </div>
 
+      {/* Missing Start Date Prompt Banner */}
+      {!tripStartDate && waypoints.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent border border-amber-500/40 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+              <i className="fa-regular fa-calendar-plus text-lg"></i>
+            </div>
+            <div>
+              <div className="text-xs sm:text-sm font-bold text-amber-200">Trip Start Date Required</div>
+              <p className="text-[11px] text-slate-300">Set your departure date to automatically calculate exact dates for all waypoints.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            <input
+              type="date"
+              onChange={(e) => onUpdateTripStartDate && onUpdateTripStartDate(e.target.value)}
+              className="bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-1.5 text-xs text-amber-200 focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Waypoints List */}
       <div className="space-y-3 sm:space-y-4">
         {waypoints.length === 0 ? (
@@ -253,6 +279,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
           waypoints.map((wp, wIdx) => {
             const currentDisplayDay = getWaypointDisplayDay(waypoints, wIdx);
             const stayCount = wp.stayNights !== undefined ? wp.stayNights : 1;
+            const wpDate = getWaypointDate(tripStartDate, waypoints, wIdx);
+            const formattedDateStr = wpDate ? formatWaypointDateDisplay(wpDate) : null;
 
             const breaksMiles = wp.estMiles > 300;
             const arrH = wp.arrivalHour !== undefined ? wp.arrivalHour : 15;
@@ -278,8 +306,33 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                       className="text-slate-300 hover:text-emerald-400 p-1 text-xs font-semibold flex items-center gap-1.5 bg-slate-900/50 rounded-lg px-2 border border-slate-700"
                     >
                       <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'}`}></i>
-                      <span className={`${badgeBgClass} text-[11px] font-bold px-2 py-0.5 rounded`}>DAY {currentDisplayDay}</span>
+                      <span className={`${badgeBgClass} text-[11px] font-bold px-2 py-0.5 rounded`}>
+                        DAY {currentDisplayDay}{wIdx > 0 && formattedDateStr ? ` · ${formattedDateStr}` : ''}
+                      </span>
                     </button>
+
+                    {wIdx === 0 && (
+                      <div className={`flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-xl border ${!tripStartDate ? 'border-amber-500/60 ring-1 ring-amber-500/30' : 'border-emerald-500/40'} shadow-sm`}>
+                        <i className={`fa-regular fa-calendar ${!tripStartDate ? 'text-amber-400' : 'text-emerald-400'} text-xs`}></i>
+                        <input 
+                          type="date" 
+                          value={tripStartDate || ''} 
+                          onChange={(e) => onUpdateTripStartDate && onUpdateTripStartDate(e.target.value)}
+                          className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${!tripStartDate ? 'text-amber-300' : 'text-emerald-300'}`}
+                          title="Click to edit Trip Start Date (cascades to all waypoints)"
+                        />
+                        {formattedDateStr ? (
+                          <span className="text-[11px] text-emerald-400/90 font-medium hidden sm:inline">
+                            ({formattedDateStr})
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold animate-pulse">
+                            Set Start Date
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <span className="text-xs text-slate-300 font-medium">
                       Day Distance: <strong className="text-emerald-400">{wp.estMiles} mi</strong> | Camp Arrival: <strong className={breaksTime ? 'text-amber-400 font-bold' : 'text-emerald-400'}>{formattedArrTime}</strong>
                     </span>
