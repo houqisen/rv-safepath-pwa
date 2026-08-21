@@ -38,22 +38,32 @@ export async function loadUserProfileFromCloud(userId: string): Promise<RvProfil
 // ITINERARY WAYPOINTS CLOUD METHODS
 // ==========================================
 
-export async function saveUserWaypointsToCloud(userId: string, waypoints: Waypoint[]): Promise<void> {
+export async function saveUserWaypointsToCloud(
+  userId: string,
+  waypoints: Waypoint[],
+  tripStartDate?: string
+): Promise<void> {
   if (!userId) return;
   const itineraryRef = doc(db, 'users', userId, 'itinerary', 'active');
   await setDoc(itineraryRef, {
     waypoints,
+    tripStartDate: tripStartDate || '',
     updatedAt: new Date().toISOString()
   }, { merge: true });
 }
 
-export async function loadUserWaypointsFromCloud(userId: string): Promise<Waypoint[] | null> {
+export async function loadUserWaypointsFromCloud(
+  userId: string
+): Promise<{ waypoints: Waypoint[]; tripStartDate: string } | null> {
   if (!userId) return null;
   const itineraryRef = doc(db, 'users', userId, 'itinerary', 'active');
   const snap = await getDoc(itineraryRef);
   if (snap.exists()) {
     const data = snap.data();
-    return (data.waypoints || []) as Waypoint[];
+    return {
+      waypoints: (data.waypoints || []) as Waypoint[],
+      tripStartDate: data.tripStartDate || ''
+    };
   }
   return null;
 }
@@ -100,7 +110,7 @@ export function subscribeToUserCloudData(
   userId: string,
   callbacks: {
     onProfileUpdate?: (profile: RvProfile) => void;
-    onWaypointsUpdate?: (waypoints: Waypoint[]) => void;
+    onWaypointsUpdate?: (waypoints: Waypoint[], tripStartDate?: string) => void;
     onChecklistsUpdate?: (tasks: { departureTasks: ChecklistTask[]; arrivalTasks: ChecklistTask[] }) => void;
   }
 ): () => void {
@@ -127,7 +137,7 @@ export function subscribeToUserCloudData(
       if (snap.exists()) {
         const data = snap.data();
         if (data.waypoints) {
-          callbacks.onWaypointsUpdate!(data.waypoints as Waypoint[]);
+          callbacks.onWaypointsUpdate!(data.waypoints as Waypoint[], data.tripStartDate || '');
         }
       }
     });
