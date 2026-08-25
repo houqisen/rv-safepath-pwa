@@ -123,9 +123,10 @@ export async function searchNearbyPlaces(
       
       // Strict Fuel Station Verification Filter (Eliminates standalone convenience stores without gas pumps)
       if (category === 'fuel') {
-        const placeTypes: string[] = Array.isArray(place.types) ? place.types.map((t: any) => String(t).toLowerCase()) : [];
         const primaryType = (place.primaryType || '').toLowerCase();
-        const hasGasStationType = placeTypes.includes('gas_station') || primaryType === 'gas_station';
+        const primaryTypeDisplay = typeof place.primaryTypeDisplayName === 'string' 
+          ? place.primaryTypeDisplayName.toLowerCase() 
+          : (place.primaryTypeDisplayName?.text || '').toLowerCase();
         const hasFuelOptions = Boolean(place.fuelOptions && Array.isArray(place.fuelOptions.fuelPrices) && place.fuelOptions.fuelPrices.length > 0);
 
         // Major verified gas station / travel plaza brands
@@ -135,34 +136,42 @@ export async function searchNearbyPlaces(
           'bp', 'texaco', 'phillips 66', 'conoco', '76', 'sinclair', 'sunoco', 'valero', 'marathon',
           'speedway', 'maverik', "buc-ee's", 'bucees', "casey's", 'caseys', 'kwik trip', 'kum & go',
           'sheetz', 'wawa', 'costco gasoline', 'costco gas', "sam's club gas", 'arco', 'co-op gas',
-          'fas gas', 'domo', 'circle k gas', 'gas station', 'fuel station', 'petrol'
+          'fas gas', 'domo', 'circle k gas', 'gas station', 'fuel station', 'petrol', 'truck stop'
         ];
 
-        const isVerifiedBrand = verifiedFuelBrands.some(brand => nameLower.includes(brand));
+        const hasVerifiedBrandName = verifiedFuelBrands.some(brand => nameLower.includes(brand));
 
-        // Standalone retail chains often without gas pumps
+        // Retail convenience stores / supermarket chains that are often standalone without gas pumps
         const standaloneRetailChains = [
-          '7-eleven', '7 eleven', 'circle k', "mac's", 'macs', 'walgreens', 'cvs', 'dollar general',
-          'dollar tree', 'family dollar', 'corner store', 'mini mart', 'minimart', 'grocery', 'supermarket',
-          'convenience store', 'smoke shop', 'vape', 'liquor'
+          '7-eleven', '7 eleven', 'circle k', "mac's", 'macs', 'walgreens', 'cvs', 'rite aid',
+          'dollar general', 'dollar tree', 'family dollar', 'corner store', 'mini mart', 'minimart',
+          'grocery', 'supermarket', 'convenience store', 'smoke shop', 'vape', 'liquor'
         ];
 
-        const isKnownRetailChain = standaloneRetailChains.some(chain => nameLower.includes(chain));
+        const isRetailChain = standaloneRetailChains.some(chain => nameLower.includes(chain));
 
-        // If it's a standalone retail chain and does not have a verified gas station brand in its name,
-        // it MUST have explicit gas_station type or live fuel options to be considered a fuel station.
-        if (isKnownRetailChain && !isVerifiedBrand) {
-          if (!hasGasStationType && !hasFuelOptions) {
-            return null;
-          }
+        // 1. If it's a known retail chain (like 7-Eleven or Circle K) without a co-branded fuel brand in the title:
+        // Exclude it immediately.
+        if (isRetailChain && !hasVerifiedBrandName) {
+          return null;
         }
 
-        // Exclude general retail/grocery stores unless they have explicit gas_station type or fuel options
-        const nonFuelPrimaryTypes = ['convenience_store', 'grocery_store', 'supermarket', 'pharmacy', 'liquor_store', 'smoke_shop'];
-        if (!hasGasStationType && !hasFuelOptions && !isVerifiedBrand) {
-          if (nonFuelPrimaryTypes.includes(primaryType)) {
-            return null;
-          }
+        // 2. If primaryType or primaryTypeDisplayName is a non-fuel business:
+        const nonFuelPrimaryTypes = [
+          'convenience_store', 'store', 'grocery_store', 'supermarket',
+          'pharmacy', 'liquor_store', 'smoke_shop', 'restaurant', 'cafe', 'car_wash'
+        ];
+        if (nonFuelPrimaryTypes.includes(primaryType) && !hasVerifiedBrandName && !hasFuelOptions) {
+          return null;
+        }
+        if (primaryTypeDisplay.includes('convenience') && !hasVerifiedBrandName && !hasFuelOptions) {
+          return null;
+        }
+
+        // 3. Must either be primaryType 'gas_station', have a verified brand name, or have active fuelOptions
+        const isGasStationPrimary = primaryType === 'gas_station' || primaryTypeDisplay.includes('gas station');
+        if (!isGasStationPrimary && !hasVerifiedBrandName && !hasFuelOptions) {
+          return null;
         }
       }
 
