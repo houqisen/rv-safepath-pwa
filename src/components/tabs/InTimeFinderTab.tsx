@@ -3,7 +3,7 @@ import { RvProfile } from '../../types/rv';
 import { FacilityItem, PlaceCategory } from '../../types/places';
 import { DARK_MAP_STYLE } from '../../constants/mapStyles';
 import { searchNearbyPlaces } from '../../services/placesService';
-import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
+import { formatResolvedPlaceAddress, cleanAddressForNavigation } from '../../utils/addressUtils';
 
 interface InTimeFinderTabProps {
   profile: RvProfile;
@@ -225,7 +225,8 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
         const loc = results[0].geometry.location;
         const newLat = loc.lat();
         const newLng = loc.lng();
-        const addr = results[0].formatted_address || manualInputText;
+        const rawAddr = results[0].formatted_address || manualInputText;
+        const addr = cleanAddressForNavigation(rawAddr);
         setUserCoords({ lat: newLat, lng: newLng });
         setUserLocationName(addr);
         setManualInputText(addr);
@@ -254,7 +255,7 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (res, stat) => {
               if (stat === 'OK' && res && res[0]) {
-                const addr = res[0].formatted_address;
+                const addr = cleanAddressForNavigation(res[0].formatted_address);
                 setUserLocationName(addr);
                 setManualInputText(addr);
               }
