@@ -41,6 +41,14 @@ export async function searchNearbyPlaces(
       ];
     } else if (filter === 'campground') {
       queryStrings = [{ query: 'rv park campground', category: 'campground' }];
+    } else if (filter === 'ev') {
+      queryStrings = [
+        { query: 'EV charging station', category: 'ev' },
+        { query: 'Tesla Supercharger', category: 'ev' },
+        { query: 'Electrify America charging station', category: 'ev' },
+        { query: 'ChargePoint station', category: 'ev' },
+        { query: 'EVgo charging station', category: 'ev' }
+      ];
     } else if (filter === 'all') {
       queryStrings = [
         { query: 'gas station', category: 'fuel' },
@@ -50,6 +58,8 @@ export async function searchNearbyPlaces(
         { query: 'Walmart', category: 'parking' },
         { query: 'Cracker Barrel', category: 'parking' },
         { query: 'Casino RV overnight parking', category: 'parking' },
+        { query: 'EV charging station', category: 'ev' },
+        { query: 'Tesla Supercharger', category: 'ev' },
         { query: 'winery RV parking overnight', category: 'parking' },
         { query: 'brewery RV parking overnight', category: 'parking' },
         { query: 'farm stay overnight RV', category: 'parking' },
@@ -67,7 +77,7 @@ export async function searchNearbyPlaces(
       try {
         const request = {
           textQuery: qObj.query,
-          fields: ['id', 'displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'fuelOptions', 'websiteURI'],
+          fields: ['id', 'displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'fuelOptions', 'evChargeOptions', 'websiteURI'],
           locationBias: { center: { lat, lng }, radius: 32186 },
           maxResultCount: 15
         };
@@ -188,6 +198,18 @@ export async function searchNearbyPlaces(
         } else if (nameLower.includes('casino')) {
           descText = 'Casino RV Parking: Often permits free overnight RV parking for registered guests or players.';
         }
+      } else if (category === 'ev') {
+        if (nameLower.includes('tesla') || nameLower.includes('supercharger')) {
+          descText = 'Tesla Supercharger: High-power DC fast charging with pull-in / back-in stalls.';
+        } else if (nameLower.includes('electrify america')) {
+          descText = 'Electrify America: High-power DC Fast Charging (CCS & NACS up to 350kW).';
+        } else if (nameLower.includes('chargepoint')) {
+          descText = 'ChargePoint: Public Level 2 / DC Fast Charging station for all EV models.';
+        } else if (nameLower.includes('evgo')) {
+          descText = 'EVgo: High-speed DC rapid charging station with multi-port connectors.';
+        } else {
+          descText = 'EV Charging Station: Public electric vehicle charging stalls available.';
+        }
       }
 
       const currentHour = new Date().getHours();
@@ -213,7 +235,7 @@ export async function searchNearbyPlaces(
         fullHookup: isFullHookup,
         dumpStation: category === 'campground' || category === 'dump',
         overnight: category === 'campground' || category === 'parking',
-        discount: category === 'fuel' ? 'Fuel & RV Access' : category === 'parking' ? 'Overnight Stop' : category === 'propane' ? 'Bulk LP Refill' : 'RV Partner',
+        discount: category === 'fuel' ? 'Fuel & RV Access' : category === 'parking' ? 'Overnight Stop' : category === 'propane' ? 'Bulk LP Refill' : category === 'ev' ? 'EV Fast Charge' : 'RV Partner',
         rating: rating,
         userRatingsTotal: userRatingsTotal,
         isOpenNow: isOpenNow,
