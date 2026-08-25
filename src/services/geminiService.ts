@@ -37,7 +37,7 @@ export async function generateAiTripPlan(options: GenerateTripOptions): Promise<
     const rawDestInput = destinations.trim() || "National Parks road trip";
     const parsedDests = parseDestinationList(rawDestInput);
     const hasSequenceArrow = rawDestInput.includes('->') || rawDestInput.includes('-->');
-    const startText = startLocation.trim() || "Bellevue, WA";
+    const startText = startLocation.trim() || "Starting location";
     const vibesText = vibeTags.join(', ');
     const { diffDays, season, depFormatted, retFormatted } = calculateTripDurationAndSeason(departureDate, returnDate);
     
@@ -101,17 +101,19 @@ ${formattedDestList}
     You are RV SafePath AI Copilot, an expert RV travel planning assistant.
     
     USER RIG SPECS (DYNAMICALLY INJECTED FROM ACTIVE PROFILE):
-    - Starting Origin / Home: ${startLocation || "Bellevue, WA"}
+    - Starting Origin / Home: ${startLocation || "Current location"}
     - RV Type: ${profile.rvType}
     - Combined Driving Length: ${combinedLen} ft (Ensure all stops and campsites accommodate >= ${combinedLen}ft)
     - Height Clearance: ${profile.heightFeet} ft ${profile.heightInches} in (MANDATORY: Ensure all routes avoid low clearance bridges and low tree overhangs)
     - Gross Weight: ${profile.weightLbs.toLocaleString()} lbs
-    - Towing Fuel Economy: ${safeMpg} MPG (Safe towing fuel range: ~${safeFuelRangeVal} miles between fill-ups)
+    - Powertrain: ${profile.isEvTowVehicle ? `⚡ Electric Vehicle (EV) - ${profile.evModel || 'Electric Tow Vehicle'}` : `Internal Combustion Engine`}
+    - Towing Range / Economy: ${profile.isEvTowVehicle ? `⚡ EV Towing Range: ~${profile.evTowingRangeMiles || 140} miles per charge (${profile.evPlugType || 'NACS / CCS'})` : `${safeMpg} MPG (Safe towing fuel range: ~${safeFuelRangeVal} miles between fill-ups)`}
     - Electrical Rating: ${profile.ampRating}
     - Minimum Hookup: ${profile.minHookup}
     - Propane Setup: ${profile.propaneStyle} (${profile.propaneCount} x ${profile.propaneLb} lbs)
     - Towing Vehicle Setup: ${profile.towSetup}
     - Active Memberships: ${profile.memberships.join(', ') || 'None'}
+    ${profile.isEvTowVehicle ? `\n    ⚡ MANDATORY EV CHARGING DIRECTIVE: The user is towing with an EV (${profile.evModel || 'EV'}). For any travel day where total mileage exceeds ~${profile.evTowingRangeMiles || 140} miles, you MUST insert intermediate Daytime Stops at verified DC Fast Charging plazas (e.g. Tesla Supercharger, Electrify America, EVgo) spaced every 100-130 miles for a 35-45 min charging and lunch break. Prioritize evening campgrounds with 50A/30A hookups so the vehicle charges overnight.` : ''}
 
     CRITICAL RV ROUTING & SAFETY LAWS:
     1. MANDATORY MULTI-STOP WAYPOINT STRUCTURE:
