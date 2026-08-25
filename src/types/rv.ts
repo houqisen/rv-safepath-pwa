@@ -17,4 +17,8 @@ export interface RvProfile {
   solarWatts: string;
   hasDogbone: boolean;
   hasStarlink: boolean;
+  isEvTowVehicle?: boolean;
+  evModel?: string;
+  evTowingRangeMiles?: number;
+  evPlugType?: string;
 }
