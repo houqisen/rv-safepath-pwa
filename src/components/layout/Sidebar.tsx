@@ -94,7 +94,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, profi
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">Tow Vehicle:</span>
-            <span className="text-slate-300 truncate max-w-[120px]">{profile.towSetup}</span>
+            {profile.isEvTowVehicle ? (
+              <span className="text-cyan-300 font-semibold truncate max-w-[120px] flex items-center gap-1">
+                <i className="fa-solid fa-bolt text-[10px] text-cyan-400"></i> EV ({profile.evTowingRangeMiles || 140} mi)
+              </span>
+            ) : (
+              <span className="text-slate-300 truncate max-w-[120px]">{profile.towSetup}</span>
+            )}
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">Off-Grid Power:</span>
