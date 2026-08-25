@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { RvProfile } from '../../types/rv';
 import { RouteSummary } from '../../types/places';
 import { DARK_MAP_STYLE } from '../../constants/mapStyles';
-import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
+import { formatResolvedPlaceAddress, cleanAddressForNavigation } from '../../utils/addressUtils';
 
 interface SafeRouterTabProps {
   profile: RvProfile;
@@ -103,7 +103,7 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
           geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
             setIsLocatingGPS(false);
             if (status === 'OK' && results && results[0]) {
-              const addr = results[0].formatted_address;
+              const addr = cleanAddressForNavigation(results[0].formatted_address);
               setRouteOrigin(addr);
             } else {
               setRouteOrigin(`${newLat.toFixed(5)}, ${newLng.toFixed(5)}`);
