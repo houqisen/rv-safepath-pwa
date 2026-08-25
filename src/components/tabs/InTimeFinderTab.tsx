@@ -149,6 +149,9 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
       if (cat === 'fuel') {
         color = '#f59e0b';
         svg = `<path fill="#ffffff" d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.22v5.72c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-5h1v3.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H5V5h7v5zm6 0c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5z"/>`;
+      } else if (cat === 'ev') {
+        color = '#06b6d4';
+        svg = `<path fill="#ffffff" d="M14.5 11l-3 6h3.5l-2 5 6-7h-3.5l2-4h-3zM7 3h10v18H7V3zm-2 2h2v14H5V5zm14 0h2v14h-2V5z"/>`;
       } else if (cat === 'propane') {
         color = '#f97316';
         svg = `<path fill="#ffffff" d="M12 2.1c-.2 2.8-2.3 4.8-4 6.7C6.1 10.9 5 13.1 5 15.5 5 19.1 7.9 22 11.5 22s6.5-2.9 6.5-6.5c0-3.3-2.1-6.2-4.2-8.4-.7-.7-1.4-1.5-1.8-2.5v-2.5zM12 19c-1.7 0-3-1.3-3-3 0-1.2.7-2.3 1.6-3.1.6-.5 1.4-1.1 1.8-2 .6 1.1 1.7 1.8 2.3 2.8.8 1.1 1.3 2.1 1.3 3.3 0 1.1-.9 2-2 2z"/>`;
@@ -353,14 +356,22 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
             </div>
           )}
 
-          {/* 6 Category Grid */}
-          <div className="flex md:grid md:grid-cols-3 gap-1.5 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+          {/* 7 Category Grid */}
+          <div className="flex md:grid md:grid-cols-4 gap-1.5 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
             <button 
               onClick={() => { setActiveFilter('fuel'); fetchPlaces(userCoords.lat, userCoords.lng, 'fuel'); }} 
               className={`flex md:flex-col items-center gap-1.5 md:gap-0 p-1.5 sm:p-2 rounded-xl transition text-xs font-medium whitespace-nowrap shrink-0 ${activeFilter === 'fuel' ? 'bg-emerald-600/30 border border-emerald-500 text-emerald-300' : 'bg-slate-700/70 border border-slate-600 text-slate-200'}`}
             >
               <i className="fa-solid fa-gas-pump text-amber-400 text-sm sm:text-base md:mb-1"></i>
               <span>Fuel</span>
+            </button>
+
+            <button 
+              onClick={() => { setActiveFilter('ev'); fetchPlaces(userCoords.lat, userCoords.lng, 'ev'); }} 
+              className={`flex md:flex-col items-center gap-1.5 md:gap-0 p-1.5 sm:p-2 rounded-xl transition text-xs font-medium whitespace-nowrap shrink-0 ${activeFilter === 'ev' ? 'bg-cyan-600/30 border border-cyan-500 text-cyan-300' : 'bg-slate-700/70 border border-slate-600 text-slate-200'}`}
+            >
+              <i className="fa-solid fa-charging-station text-cyan-400 text-sm sm:text-base md:mb-1"></i>
+              <span>EV Charge</span>
             </button>
             
             <button 
@@ -454,7 +465,7 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-base shrink-0">
-                      {facility.category === 'fuel' ? '⛽' : facility.category === 'propane' ? '🔥' : facility.category === 'dump' ? '🚾' : facility.category === 'parking' ? '🅿️' : '🏕️'}
+                      {facility.category === 'fuel' ? '⛽' : facility.category === 'ev' ? '⚡' : facility.category === 'propane' ? '🔥' : facility.category === 'dump' ? '🚾' : facility.category === 'parking' ? '🅿️' : '🏕️'}
                     </span>
                     {facility.website ? (
                       <a
@@ -527,6 +538,7 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
                   <span className="bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20">
                     <i className="fa-solid fa-ruler-vertical"></i> Clear: {facility.clearance}
                   </span>
+                  {facility.category === 'ev' && <span className="bg-cyan-500/10 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/20"><i className="fa-solid fa-bolt"></i> EV Fast Charge</span>}
                   {facility.pullThrough && <span className="bg-emerald-500/10 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/20"><i className="fa-solid fa-arrows-left-right"></i> Pull-Through</span>}
                   {facility.fullHookup && <span className="bg-sky-500/10 text-sky-300 px-1.5 py-0.5 rounded border border-sky-500/20"><i className="fa-solid fa-bolt"></i> Full Hookups</span>}
                   {facility.propane && <span className="bg-orange-500/10 text-orange-300 px-1.5 py-0.5 rounded border border-orange-500/20"><i className="fa-solid fa-fire"></i> Bulk Refill</span>}
