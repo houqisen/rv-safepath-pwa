@@ -22,6 +22,7 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   const [routeSummary, setRouteSummary] = useState<RouteSummary | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [routerError, setRouterError] = useState<string | null>(null);
+  const [isLocatingGPS, setIsLocatingGPS] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const googleMapRouteInstance = useRef<google.maps.Map | null>(null);
@@ -77,6 +78,50 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
       });
     }
   }, [isGoogleLoaded]);
+
+  const handleLocateGPS = () => {
+    if (!navigator.geolocation) {
+      setRouterError("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    setIsLocatingGPS(true);
+    setRouterError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const newLat = pos.coords.latitude;
+        const newLng = pos.coords.longitude;
+
+        if (googleMapRouteInstance.current) {
+          googleMapRouteInstance.current.panTo({ lat: newLat, lng: newLng });
+          googleMapRouteInstance.current.setZoom(13);
+        }
+
+        if (window.google && window.google.maps) {
+          const geocoder = new window.google.maps.Geocoder();
+          geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
+            setIsLocatingGPS(false);
+            if (status === 'OK' && results && results[0]) {
+              const addr = results[0].formatted_address;
+              setRouteOrigin(addr);
+            } else {
+              setRouteOrigin(`${newLat.toFixed(5)}, ${newLng.toFixed(5)}`);
+            }
+          });
+        } else {
+          setIsLocatingGPS(false);
+          setRouteOrigin(`${newLat.toFixed(5)}, ${newLng.toFixed(5)}`);
+        }
+      },
+      (err) => {
+        setIsLocatingGPS(false);
+        console.error("GPS error:", err);
+        setRouterError("Could not retrieve GPS location. Please check browser location permissions.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
 
   const handleCalculateRoute = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,14 +210,37 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
         <form onSubmit={handleCalculateRoute} className="space-y-3">
           <div>
             <label className="block text-xs text-slate-400 mb-1">Starting Point</label>
-            <input 
-              ref={originInputRef} 
-              type="text" 
-              value={routeOrigin} 
-              onChange={(e) => setRouteOrigin(e.target.value)} 
-              placeholder="Starting address..." 
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
-            />
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <input 
+                  ref={originInputRef} 
+                  type="text" 
+                  value={routeOrigin} 
+                  onChange={(e) => setRouteOrigin(e.target.value)} 
+                  placeholder="Starting address..." 
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3 pr-7 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                />
+                {routeOrigin && (
+                  <button
+                    type="button"
+                    onClick={() => { setRouteOrigin(''); if (originInputRef.current) originInputRef.current.focus(); }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleLocateGPS}
+                disabled={isLocatingGPS}
+                title="Use Current GPS Location"
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-2.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition flex items-center gap-1.5 shadow-sm"
+              >
+                <i className={`fa-solid fa-crosshairs ${isLocatingGPS ? 'animate-spin' : ''}`}></i>
+                <span className="hidden sm:inline">GPS</span>
+              </button>
+            </div>
           </div>
 
           <div>
