@@ -1,4 +1,4 @@
-export type PlaceCategory = 'fuel' | 'propane' | 'dump' | 'parking' | 'campground' | 'all';
+export type PlaceCategory = 'fuel' | 'propane' | 'dump' | 'parking' | 'campground' | 'ev' | 'all';
 
 export interface FacilityItem {
   id: string;
