@@ -18,5 +18,9 @@ export const DEFAULT_PROFILE: RvProfile = {
   batteryType: "Lithium (LiFePO4) - 100Ah",
   solarWatts: "200W - 400W (Moderate Off-Grid)",
   hasDogbone: true,
-  hasStarlink: true
+  hasStarlink: true,
+  isEvTowVehicle: false,
+  evModel: "Ford F-150 Lightning / Rivian R1T / Tesla Cybertruck",
+  evTowingRangeMiles: 140,
+  evPlugType: "NACS / CCS"
 };
