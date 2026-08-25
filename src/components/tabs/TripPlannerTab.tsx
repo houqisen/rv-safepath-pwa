@@ -617,7 +617,6 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                       <textarea 
                         value={wp.notes} 
                         onChange={(e) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, notes: e.target.value }))}
-                        placeholder="Day highlights, bridge clearances, planned activities..." 
                         rows={2}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 resize-y"
                       ></textarea>
