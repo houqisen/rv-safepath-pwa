@@ -212,12 +212,14 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
       {/* 3-3-3 Metric Cards */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="bg-slate-800/80 border border-slate-700/70 rounded-xl sm:rounded-2xl p-2 sm:p-4 flex flex-col sm:flex-row items-center sm:gap-3 text-center sm:text-left">
-          <div className="p-1.5 sm:p-3 bg-emerald-500/20 text-emerald-400 rounded-lg sm:rounded-xl mb-1 sm:mb-0">
-            <i className="fa-solid fa-gauge-high text-sm sm:text-xl"></i>
+          <div className={`p-1.5 sm:p-3 rounded-lg sm:rounded-xl mb-1 sm:mb-0 ${profile.isEvTowVehicle ? 'bg-cyan-500/20 text-cyan-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+            <i className={`fa-solid ${profile.isEvTowVehicle ? 'fa-bolt' : 'fa-gauge-high'} text-sm sm:text-xl`}></i>
           </div>
           <div>
-            <div className="text-[10px] sm:text-xs text-slate-400">Daily Target</div>
-            <div className="text-xs sm:text-lg font-bold text-slate-100">&le;300 Mi/Day</div>
+            <div className="text-[10px] sm:text-xs text-slate-400">{profile.isEvTowVehicle ? "EV Daily Target" : "Daily Target"}</div>
+            <div className={`text-xs sm:text-lg font-bold ${profile.isEvTowVehicle ? 'text-cyan-300' : 'text-slate-100'}`}>
+              {profile.isEvTowVehicle ? `≤${(profile.evTowingRangeMiles || 140) * 2} Mi/Day` : "≤300 Mi/Day"}
+            </div>
           </div>
         </div>
 
@@ -445,8 +447,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                     🏕️ Overnight Destination ({stayCount}N)
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded font-medium">
-                                    ☕ Mid-day / Fuel Pause
+                                  <span className={`text-[10px] border px-1.5 py-0.5 rounded font-medium ${profile.isEvTowVehicle ? 'bg-cyan-950/40 text-cyan-300 border-cyan-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                                    {profile.isEvTowVehicle ? '⚡ EV Fast Charge' : '☕ Mid-day / Fuel Pause'}
                                   </span>
                                 )}
 
