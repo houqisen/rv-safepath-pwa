@@ -23,6 +23,8 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [routerError, setRouterError] = useState<string | null>(null);
   const [isLocatingGPS, setIsLocatingGPS] = useState(false);
+  const [planEvStops, setPlanEvStops] = useState(true);
+  const [evChargingStopsCount, setEvChargingStopsCount] = useState(0);
 
   // Sync routeOrigin whenever userLocationName changes if routeOrigin is empty
   useEffect(() => {
@@ -34,6 +36,7 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const googleMapRouteInstance = useRef<google.maps.Map | null>(null);
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
+  const chargingMarkersRef = useRef<google.maps.Marker[]>([]);
   const originInputRef = useRef<HTMLInputElement>(null);
   const destInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,9 +163,13 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
     directionsService.route(request, (result, status) => {
       setIsCalculatingRoute(false);
       if (status === window.google.maps.DirectionsStatus.OK && result && result.routes[0]) {
-        // Clear previous polyline if any
+        // Clear previous polyline & markers if any
         if (routePolylineRef.current) {
           routePolylineRef.current.setMap(null);
+        }
+        if (chargingMarkersRef.current) {
+          chargingMarkersRef.current.forEach(m => m.setMap(null));
+          chargingMarkersRef.current = [];
         }
 
         // Draw new polyline directly on the map
@@ -170,7 +177,7 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
           const routePath = result.routes[0].overview_path;
           routePolylineRef.current = new window.google.maps.Polyline({
             path: routePath,
-            strokeColor: '#22c55e',
+            strokeColor: profile.isEvTowVehicle ? '#06b6d4' : '#22c55e',
             strokeWeight: 6,
             strokeOpacity: 0.85,
             map: googleMapRouteInstance.current
@@ -186,21 +193,90 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
         const miles = Math.round((distanceMeters / 1609.34) * 10) / 10;
         const hours = Math.floor(miles / 52);
         const mins = Math.round(((miles / 52) - hours) * 60);
-        const avgMpg = Number(profile.towingMpg) || 10;
-        const fuelExpense = Math.round((miles / avgMpg) * 3.85);
 
-        setRouteSummary({
-          distanceMiles: miles,
-          travelTime: `${hours} hrs ${mins} mins`,
-          fuelExpense: fuelExpense,
-          avgMpg: avgMpg,
-          hazardNotice: `Checked Clear: Safe path configured for ${profile.heightFeet}'${profile.heightInches}" height clearance, ${profile.weightLbs.toLocaleString()} lbs weight limit, and ${avgMpg} Towing MPG.`
-        });
+        const isEv = Boolean(profile.isEvTowVehicle);
+        const evRange = profile.evTowingRangeMiles || 140;
+        const numChargingStops = (isEv && planEvStops && miles > evRange) ? Math.ceil(miles / evRange) - 1 : 0;
+        setEvChargingStopsCount(numChargingStops);
+
+        const chargingMinutesTotal = numChargingStops * 35;
+        const totalTripMinutes = (hours * 60 + mins) + chargingMinutesTotal;
+        const totalTripHours = Math.floor(totalTripMinutes / 60);
+        const remTripMinutes = totalTripMinutes % 60;
+
+        // Place along-route EV charging markers if applicable
+        if (isEv && planEvStops && numChargingStops > 0 && googleMapRouteInstance.current) {
+          const path = result.routes[0].overview_path;
+          for (let i = 1; i <= numChargingStops; i++) {
+            const fraction = i / (numChargingStops + 1);
+            const ptIndex = Math.min(Math.floor(path.length * fraction), path.length - 1);
+            const pt = path[ptIndex];
+
+            const evIconUri = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 36 46"><path fill="#06b6d4" stroke="#ffffff" stroke-width="2" d="M18 1C8.6 1 1 8.6 1 18c0 12.3 15.1 25.5 16.3 26.5a1 1 0 0 0 1.4 0C19.9 43.5 35 30.3 35 18 35 8.6 27.4 1 18 1z"/><circle cx="18" cy="18" r="13" fill="#06b6d4"/><g transform="translate(6, 6)"><path fill="#ffffff" d="M14.5 11l-3 6h3.5l-2 5 6-7h-3.5l2-4h-3zM7 3h10v18H7V3zm-2 2h2v14H5V5zm14 0h2v14h-2V5z"/></g></svg>`)}`;
+
+            const stopMarker = new window.google.maps.Marker({
+              position: pt,
+              map: googleMapRouteInstance.current,
+              title: `⚡ EV Fast Charging Stop ${i}`,
+              icon: {
+                url: evIconUri,
+                scaledSize: new window.google.maps.Size(28, 36),
+                anchor: new window.google.maps.Point(14, 36)
+              }
+            });
+
+            const infowindow = new window.google.maps.InfoWindow({
+              content: `
+                <div style="color: #0f172a; padding: 6px; font-family: system-ui; max-width: 220px;">
+                  <strong style="color: #0891b2; font-size: 13px;">⚡ EV Charging Stop ${i}</strong>
+                  <p style="margin: 4px 0; font-size: 11px; color: #475569;">Recommended ~35 min DC Fast Charge (Mile ~${Math.round(miles * fraction)})</p>
+                  <span style="font-size: 10px; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${profile.evPlugType || 'NACS / CCS'}</span>
+                </div>
+              `
+            });
+
+            stopMarker.addListener('click', () => {
+              infowindow.open(googleMapRouteInstance.current, stopMarker);
+            });
+
+            chargingMarkersRef.current.push(stopMarker);
+          }
+        }
+
+        if (isEv) {
+          const estKwh = Math.round(miles * 0.9);
+          const estElectricityCost = Math.round(estKwh * 0.42);
+
+          setRouteSummary({
+            distanceMiles: miles,
+            travelTime: numChargingStops > 0 
+              ? `${totalTripHours} hrs ${remTripMinutes} mins (${hours}h ${mins}m driving + ${chargingMinutesTotal}m charging)` 
+              : `${hours} hrs ${mins} mins`,
+            fuelExpense: estElectricityCost,
+            avgMpg: evRange,
+            hazardNotice: `⚡ EV Safe Path Verified: Configured for ${profile.evModel || 'EV Tow Vehicle'} (~${evRange} mi towing range, ${profile.heightFeet}'${profile.heightInches}" clearance). ${numChargingStops > 0 ? `Includes ${numChargingStops} recommended along-route DC fast charging stops.` : 'Full trip is within a single battery charge.'}`
+          });
+        } else {
+          const avgMpg = Number(profile.towingMpg) || 10;
+          const fuelExpense = Math.round((miles / avgMpg) * 3.85);
+
+          setRouteSummary({
+            distanceMiles: miles,
+            travelTime: `${hours} hrs ${mins} mins`,
+            fuelExpense: fuelExpense,
+            avgMpg: avgMpg,
+            hazardNotice: `Checked Clear: Safe path configured for ${profile.heightFeet}'${profile.heightInches}" height clearance, ${profile.weightLbs.toLocaleString()} lbs weight limit, and ${avgMpg} Towing MPG.`
+          });
+        }
       } else {
         setRouterError("No driving route found between these locations. Please select valid connected driving locations.");
         if (routePolylineRef.current) {
           routePolylineRef.current.setMap(null);
           routePolylineRef.current = null;
+        }
+        if (chargingMarkersRef.current) {
+          chargingMarkersRef.current.forEach(m => m.setMap(null));
+          chargingMarkersRef.current = [];
         }
       }
     });
@@ -277,6 +353,21 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
               <span>Avoid Low Bridges (&lt; <span className="text-amber-400 font-bold">{formattedHeight}</span>)</span>
               <input type="checkbox" checked disabled className="rounded bg-slate-800 text-emerald-500" />
             </label>
+
+            {profile.isEvTowVehicle && (
+              <label className="flex items-center justify-between text-cyan-300 font-medium cursor-pointer bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30">
+                <span className="flex items-center gap-1.5">
+                  <i className="fa-solid fa-bolt text-cyan-400"></i>
+                  <span>Plan EV Fast Charging Stops (~{profile.evTowingRangeMiles || 140} mi range)</span>
+                </span>
+                <input 
+                  type="checkbox" 
+                  checked={planEvStops} 
+                  onChange={(e) => setPlanEvStops(e.target.checked)} 
+                  className="rounded bg-slate-900 border-slate-700 text-cyan-500" 
+                />
+              </label>
+            )}
             
             <label className="flex items-center justify-between text-slate-500 opacity-50 cursor-not-allowed">
               <span>Avoid Mountain Passes (&gt;6% Grade)</span>
@@ -309,20 +400,33 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
           <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-700/80 space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-400">Total Distance:</span>
-              <span className="font-bold text-emerald-400 text-sm">{routeSummary.distanceMiles} Miles (One-Way)</span>
+              <span className={`font-bold text-sm ${profile.isEvTowVehicle ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                {routeSummary.distanceMiles} Miles (One-Way)
+              </span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Est. Driving Time:</span>
+              <span className="text-slate-400">{profile.isEvTowVehicle && evChargingStopsCount > 0 ? "Total Transit Time:" : "Est. Driving Time:"}</span>
               <span className="font-medium text-slate-200">{routeSummary.travelTime}</span>
             </div>
+            {profile.isEvTowVehicle && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Required EV Charging:</span>
+                <span className="font-semibold text-cyan-300 flex items-center gap-1">
+                  <i className="fa-solid fa-bolt text-cyan-400 text-[10px]"></i>
+                  {evChargingStopsCount > 0 ? `${evChargingStopsCount} Fast Charge Stops (~35m each)` : 'Direct (Within Single Charge)'}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Est. Fuel Expense:</span>
-              <span className="font-medium text-amber-400">${routeSummary.fuelExpense} (est. @ {routeSummary.avgMpg} Towing MPG)</span>
+              <span className="text-slate-400">{profile.isEvTowVehicle ? "Est. Electricity Cost:" : "Est. Fuel Expense:"}</span>
+              <span className="font-medium text-amber-400">
+                ${routeSummary.fuelExpense} {profile.isEvTowVehicle ? "(est. @ $0.42/kWh)" : `(est. @ ${routeSummary.avgMpg} Towing MPG)`}
+              </span>
             </div>
 
             <hr className="border-slate-800" />
 
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-[11px] text-amber-300 space-y-1">
+            <div className={`p-2 text-[11px] rounded-lg space-y-1 border ${profile.isEvTowVehicle ? 'bg-cyan-950/30 border-cyan-500/30 text-cyan-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
               <p>{routeSummary.hazardNotice}</p>
             </div>
 
