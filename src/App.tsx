@@ -18,6 +18,7 @@ import {
   loadUserChecklistsFromCloud,
   subscribeToUserCloudData
 } from './services/cloudStorageService';
+import { cleanAddressForNavigation } from './utils/addressUtils';
 
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -54,7 +55,7 @@ export default function App() {
 
   // User Location State
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number }>({ lat: 47.6101, lng: -122.2015 });
-  const [userLocationName, setUserLocationName] = useState("Bellevue, WA");
+  const [userLocationName, setUserLocationName] = useState("");
 
   // Itinerary & Waypoints State
   const [waypoints, setWaypoints] = useState<Waypoint[]>(() => {
@@ -264,17 +265,29 @@ export default function App() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          const newLat = position.coords.latitude;
+          const newLng = position.coords.longitude;
           setUserCoords({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
+            lat: newLat,
+            lng: newLng
           });
+
+          if (window.google && window.google.maps) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results, status) => {
+              if (status === 'OK' && results && results[0]) {
+                const addr = cleanAddressForNavigation(results[0].formatted_address);
+                setUserLocationName(addr);
+              }
+            });
+          }
         },
         () => {
-          console.log("Using default Bellevue, WA location coordinates.");
+          console.log("Using default fallback coordinates.");
         }
       );
     }
-  }, []);
+  }, [isGoogleLoaded]);
 
   // Sync Profile to LocalStorage & Cloud Firestore
   const handleSaveProfile = (updated: RvProfile) => {
@@ -460,7 +473,7 @@ export default function App() {
   const handleAddWaypoint = () => {
     const lastWp = waypoints[waypoints.length - 1];
     const lastStop = lastWp?.stops?.[lastWp.stops.length - 1];
-    const nextOrigin = lastStop?.destination || userLocationName || "Bellevue, WA";
+    const nextOrigin = lastStop?.destination || userLocationName || "";
 
     const newWp: Waypoint = {
       id: Date.now(),
