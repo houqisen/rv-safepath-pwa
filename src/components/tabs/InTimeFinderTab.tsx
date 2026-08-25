@@ -25,10 +25,15 @@ export const InTimeFinderTab: React.FC<InTimeFinderTabProps> = ({
   const [activeFilter, setActiveFilter] = useState<PlaceCategory>('fuel');
   const [pullThroughOnly, setPullThroughOnly] = useState(false);
   const [fullHookupOnly, setFullHookupOnly] = useState(false);
-  const [manualInputText, setManualInputText] = useState(userLocationName);
+  const [manualInputText, setManualInputText] = useState(userLocationName || "");
   const [placesList, setPlacesList] = useState<FacilityItem[]>([]);
   const [isLoadingPois, setIsLoadingPois] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+
+  // Sync manual input text whenever userLocationName changes
+  useEffect(() => {
+    setManualInputText(userLocationName || "");
+  }, [userLocationName]);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const googleMapInstance = useRef<google.maps.Map | null>(null);
