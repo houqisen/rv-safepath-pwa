@@ -17,12 +17,19 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   userLocationName,
   isGoogleLoaded
 }) => {
-  const [routeOrigin, setRouteOrigin] = useState(userLocationName || "Bellevue, WA");
+  const [routeOrigin, setRouteOrigin] = useState(userLocationName || "");
   const [routeDestination, setRouteDestination] = useState("");
   const [routeSummary, setRouteSummary] = useState<RouteSummary | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [routerError, setRouterError] = useState<string | null>(null);
   const [isLocatingGPS, setIsLocatingGPS] = useState(false);
+
+  // Sync routeOrigin whenever userLocationName changes if routeOrigin is empty
+  useEffect(() => {
+    if (!routeOrigin && userLocationName) {
+      setRouteOrigin(userLocationName);
+    }
+  }, [userLocationName]);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const googleMapRouteInstance = useRef<google.maps.Map | null>(null);
@@ -126,8 +133,16 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
   const handleCalculateRoute = (e: React.FormEvent) => {
     e.preventDefault();
     const dest = routeDestination.trim();
-    const orig = routeOrigin.trim();
-    if (!dest || !window.google || !window.google.maps) return;
+    const orig = routeOrigin.trim() || userLocationName.trim();
+    if (!dest) {
+      setRouterError("Please enter a destination.");
+      return;
+    }
+    if (!orig) {
+      setRouterError("Please enter a starting point (or click GPS).");
+      return;
+    }
+    if (!window.google || !window.google.maps) return;
 
     setIsCalculatingRoute(true);
     setRouterError(null);
@@ -135,7 +150,7 @@ export const SafeRouterTab: React.FC<SafeRouterTabProps> = ({
     const directionsService = new window.google.maps.DirectionsService();
 
     const request: google.maps.DirectionsRequest = {
-      origin: orig || userLocationName,
+      origin: orig,
       destination: dest,
       travelMode: window.google.maps.TravelMode.DRIVING,
       avoidHighways: false,
