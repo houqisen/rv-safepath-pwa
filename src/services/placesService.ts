@@ -1,5 +1,6 @@
 import { FacilityItem, PlaceCategory } from '../types/places';
 import { RvProfile } from '../types/rv';
+import { cleanAddressForNavigation } from '../utils/addressUtils';
 
 export async function searchNearbyPlaces(
   lat: number,
@@ -77,7 +78,11 @@ export async function searchNearbyPlaces(
       try {
         const request = {
           textQuery: qObj.query,
-          fields: ['id', 'displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'fuelOptions', 'evChargeOptions', 'websiteURI'],
+          fields: [
+            'id', 'displayName', 'formattedAddress', 'location', 'rating',
+            'userRatingCount', 'fuelOptions', 'evChargeOptions', 'websiteURI',
+            'types', 'primaryType', 'primaryTypeDisplayName'
+          ],
           locationBias: { center: { lat, lng }, radius: 32186 },
           maxResultCount: 15
         };
@@ -112,9 +117,55 @@ export async function searchNearbyPlaces(
         ? place.displayName
         : (place.displayName?.text || place.name || 'Unnamed Facility');
       const nameLower = displayName.toLowerCase();
-      const formattedAddr = place.formattedAddress || place.vicinity || 'Local Area';
+      const rawAddr = place.formattedAddress || place.vicinity || 'Local Area';
+      const formattedAddr = cleanAddressForNavigation(rawAddr);
       const addrLower = formattedAddr.toLowerCase();
       
+      // Strict Fuel Station Verification Filter (Eliminates standalone convenience stores without gas pumps)
+      if (category === 'fuel') {
+        const placeTypes: string[] = Array.isArray(place.types) ? place.types.map((t: any) => String(t).toLowerCase()) : [];
+        const primaryType = (place.primaryType || '').toLowerCase();
+        const hasGasStationType = placeTypes.includes('gas_station') || primaryType === 'gas_station';
+        const hasFuelOptions = Boolean(place.fuelOptions && Array.isArray(place.fuelOptions.fuelPrices) && place.fuelOptions.fuelPrices.length > 0);
+
+        // Major verified gas station / travel plaza brands
+        const verifiedFuelBrands = [
+          'petro-canada', 'esso', 'chevron', 'shell', 'mobil', 'exxon', 'husky', 'pioneer', 'ultramar',
+          'irving', 'flying j', 'pilot', "love's", 'loves', 'ta travel', 'petro stopping',
+          'bp', 'texaco', 'phillips 66', 'conoco', '76', 'sinclair', 'sunoco', 'valero', 'marathon',
+          'speedway', 'maverik', "buc-ee's", 'bucees', "casey's", 'caseys', 'kwik trip', 'kum & go',
+          'sheetz', 'wawa', 'costco gasoline', 'costco gas', "sam's club gas", 'arco', 'co-op gas',
+          'fas gas', 'domo', 'circle k gas', 'gas station', 'fuel station', 'petrol'
+        ];
+
+        const isVerifiedBrand = verifiedFuelBrands.some(brand => nameLower.includes(brand));
+
+        // Standalone retail chains often without gas pumps
+        const standaloneRetailChains = [
+          '7-eleven', '7 eleven', 'circle k', "mac's", 'macs', 'walgreens', 'cvs', 'dollar general',
+          'dollar tree', 'family dollar', 'corner store', 'mini mart', 'minimart', 'grocery', 'supermarket',
+          'convenience store', 'smoke shop', 'vape', 'liquor'
+        ];
+
+        const isKnownRetailChain = standaloneRetailChains.some(chain => nameLower.includes(chain));
+
+        // If it's a standalone retail chain and does not have a verified gas station brand in its name,
+        // it MUST have explicit gas_station type or live fuel options to be considered a fuel station.
+        if (isKnownRetailChain && !isVerifiedBrand) {
+          if (!hasGasStationType && !hasFuelOptions) {
+            return null;
+          }
+        }
+
+        // Exclude general retail/grocery stores unless they have explicit gas_station type or fuel options
+        const nonFuelPrimaryTypes = ['convenience_store', 'grocery_store', 'supermarket', 'pharmacy', 'liquor_store', 'smoke_shop'];
+        if (!hasGasStationType && !hasFuelOptions && !isVerifiedBrand) {
+          if (nonFuelPrimaryTypes.includes(primaryType)) {
+            return null;
+          }
+        }
+      }
+
       // Strict Bulk Propane Refilling Verification Filter
       if (category === 'propane') {
         if (
