@@ -23,7 +23,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
   onApplyPlan
 }) => {
   const [aiInputMode, setAiInputMode] = useState<'guided' | 'custom'>('guided');
-  const [aiStartLocation, setAiStartLocation] = useState(userLocationName || "Bellevue, WA");
+  const [aiStartLocation, setAiStartLocation] = useState(userLocationName || "");
   const [aiDestinations, setAiDestinations] = useState("");
   const [aiDepartureDate, setAiDepartureDate] = useState(() => {
     const d = new Date();
