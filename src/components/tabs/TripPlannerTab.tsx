@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { RvProfile } from '../../types/rv';
-import { Waypoint, DestinationWeather } from '../../types/itinerary';
+import { Waypoint, WaypointStop, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay, getWaypointDate, formatWaypointDateDisplay } from '../../utils/dateUtils';
 import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
 
@@ -33,6 +33,63 @@ function convertFromTotalMinutes(totalMinutes: number): { hour: number; minute: 
   const hour = h24 % 12 || 12;
   const ampm = h24 >= 12 ? 'PM' : 'AM';
   return { hour, minute, ampm };
+}
+
+function adjustWaypointStopsSchedule(
+  stops: WaypointStop[],
+  initialDepHour = 8,
+  initialDepMin = 0,
+  initialDepAmPm: 'AM' | 'PM' = 'AM'
+): WaypointStop[] {
+  if (!stops || stops.length === 0) return [];
+
+  let prevArrTotalMins = 0;
+
+  return stops.map((stop, sIdx) => {
+    let depH = stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? initialDepHour : 12);
+    let depM = stop.depMin !== undefined ? stop.depMin : (sIdx === 0 ? initialDepMin : 0);
+    let depAP: 'AM' | 'PM' = stop.depAmPm || (sIdx === 0 ? initialDepAmPm : 'PM');
+
+    if (sIdx === 0) {
+      depH = initialDepHour;
+      depM = initialDepMin;
+      depAP = initialDepAmPm;
+    }
+
+    let depTotalMins = convertToTotalMinutes(depH, depM, depAP);
+
+    // If subsequent stop departure is before previous stop arrival + 15 min default stay, cascade departure
+    if (sIdx > 0 && prevArrTotalMins > 0) {
+      const defaultBreakMins = 15;
+      const minAllowedDep = Math.min(23 * 60 + 45, Math.ceil((prevArrTotalMins + defaultBreakMins) / 15) * 15);
+      if (depTotalMins < prevArrTotalMins) {
+        depTotalMins = minAllowedDep;
+        const parsed = convertFromTotalMinutes(depTotalMins);
+        depH = parsed.hour;
+        depM = parsed.minute;
+        depAP = parsed.ampm;
+      }
+    }
+
+    const legDrivingMins = stop.estHours && stop.estHours > 0
+      ? Math.round(stop.estHours * 60)
+      : (stop.estMiles && stop.estMiles > 0 ? Math.round((stop.estMiles / 50) * 60) : 60);
+
+    const arrTotalMins = Math.min(24 * 60 - 1, depTotalMins + legDrivingMins);
+    const arrH24 = Math.floor(arrTotalMins / 60) % 24;
+    const arrM = arrTotalMins % 60;
+
+    prevArrTotalMins = arrTotalMins;
+
+    return {
+      ...stop,
+      depHour: depH,
+      depMin: depM,
+      depAmPm: depAP,
+      arrivalHour: arrH24,
+      arrivalMinute: arrM
+    };
+  });
 }
 
 export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
@@ -126,11 +183,62 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
     });
   };
 
+  const handleMoveStop = (wpId: number, stopIndex: number, direction: 'up' | 'down') => {
+    onUpdateWaypoint(wpId, (wp) => {
+      const currentStops = [...(wp.stops || [])];
+      const targetIndex = direction === 'up' ? stopIndex - 1 : stopIndex + 1;
+      if (targetIndex < 0 || targetIndex >= currentStops.length) return wp;
+
+      const firstStop = currentStops[0];
+      const initialDepH = firstStop?.depHour !== undefined ? firstStop.depHour : 8;
+      const initialDepM = firstStop?.depMin !== undefined ? firstStop.depMin : 0;
+      const initialDepAP = firstStop?.depAmPm || 'AM';
+
+      // Swap stops
+      const temp = currentStops[stopIndex];
+      currentStops[stopIndex] = currentStops[targetIndex];
+      currentStops[targetIndex] = temp;
+
+      const adjustedStops = adjustWaypointStopsSchedule(currentStops, initialDepH, initialDepM, initialDepAP);
+      const totalMiles = Math.round(adjustedStops.reduce((sum, s) => sum + (s.estMiles || 0), 0) * 10) / 10;
+      const totalHours = adjustedStops.reduce((sum, s) => sum + (s.estHours || 0), 0);
+      const lastStop = adjustedStops[adjustedStops.length - 1];
+
+      return {
+        ...wp,
+        stops: adjustedStops,
+        estMiles: totalMiles,
+        estHours: totalHours,
+        arrivalHour: lastStop ? lastStop.arrivalHour : 15,
+        arrivalMinute: lastStop ? (lastStop.arrivalMinute || 0) : 0
+      };
+    });
+  };
+
   const handleRemoveStop = (wpId: number, stopId: number) => {
-    onUpdateWaypoint(wpId, (wp) => ({
-      ...wp,
-      stops: wp.stops.filter(s => s.id !== stopId)
-    }));
+    onUpdateWaypoint(wpId, (wp) => {
+      const currentStops = wp.stops || [];
+      const firstStop = currentStops[0];
+      const initialDepH = firstStop?.depHour !== undefined ? firstStop.depHour : 8;
+      const initialDepM = firstStop?.depMin !== undefined ? firstStop.depMin : 0;
+      const initialDepAP = firstStop?.depAmPm || 'AM';
+
+      const filteredStops = currentStops.filter(s => s.id !== stopId);
+      const adjustedStops = adjustWaypointStopsSchedule(filteredStops, initialDepH, initialDepM, initialDepAP);
+
+      const totalMiles = Math.round(adjustedStops.reduce((sum, s) => sum + (s.estMiles || 0), 0) * 10) / 10;
+      const totalHours = adjustedStops.reduce((sum, s) => sum + (s.estHours || 0), 0);
+      const lastStop = adjustedStops[adjustedStops.length - 1];
+
+      return {
+        ...wp,
+        stops: adjustedStops,
+        estMiles: totalMiles,
+        estHours: totalHours,
+        arrivalHour: lastStop ? lastStop.arrivalHour : 15,
+        arrivalMinute: lastStop ? (lastStop.arrivalMinute || 0) : 0
+      };
+    });
   };
 
   const handleUpdateStopDepartureTime = (
@@ -151,15 +259,33 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
 
     const { hour, minute, ampm } = convertFromTotalMinutes(reqMins);
 
-    onUpdateWaypoint(wpId, (wp) => ({
-      ...wp,
-      stops: (wp.stops || []).map(s => s.id === stopId ? {
+    onUpdateWaypoint(wpId, (wp) => {
+      const updatedStops = (wp.stops || []).map(s => s.id === stopId ? {
         ...s,
         depHour: hour,
         depMin: minute,
         depAmPm: ampm
-      } : s)
-    }));
+      } : s);
+
+      const firstStop = updatedStops[0];
+      const initialDepH = firstStop?.depHour !== undefined ? firstStop.depHour : 8;
+      const initialDepM = firstStop?.depMin !== undefined ? firstStop.depMin : 0;
+      const initialDepAP = firstStop?.depAmPm || 'AM';
+
+      const adjustedStops = adjustWaypointStopsSchedule(updatedStops, initialDepH, initialDepM, initialDepAP);
+      const totalMiles = Math.round(adjustedStops.reduce((sum, s) => sum + (s.estMiles || 0), 0) * 10) / 10;
+      const totalHours = adjustedStops.reduce((sum, s) => sum + (s.estHours || 0), 0);
+      const lastStop = adjustedStops[adjustedStops.length - 1];
+
+      return {
+        ...wp,
+        stops: adjustedStops,
+        estMiles: totalMiles,
+        estHours: totalHours,
+        arrivalHour: lastStop ? lastStop.arrivalHour : 15,
+        arrivalMinute: lastStop ? (lastStop.arrivalMinute || 0) : 0
+      };
+    });
   };
 
   return (
@@ -463,7 +589,30 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                   Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}</strong>
                                 </span>
                                 {arr.length > 1 && (
+                                  <div className="flex items-center gap-0.5 bg-slate-800/90 rounded-lg p-0.5 border border-slate-700">
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleMoveStop(wp.id, sIdx, 'up')}
+                                      disabled={sIdx === 0}
+                                      className="text-slate-400 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-400 p-1 text-xs transition"
+                                      title="Move Stop Up"
+                                    >
+                                      <i className="fa-solid fa-arrow-up"></i>
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleMoveStop(wp.id, sIdx, 'down')}
+                                      disabled={sIdx === arr.length - 1}
+                                      className="text-slate-400 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-400 p-1 text-xs transition"
+                                      title="Move Stop Down"
+                                    >
+                                      <i className="fa-solid fa-arrow-down"></i>
+                                    </button>
+                                  </div>
+                                )}
+                                {arr.length > 1 && (
                                   <button 
+                                    type="button"
                                     onClick={() => handleRemoveStop(wp.id, stop.id)}
                                     className="text-slate-500 hover:text-red-400 p-1 text-xs"
                                     title="Remove this stop"
