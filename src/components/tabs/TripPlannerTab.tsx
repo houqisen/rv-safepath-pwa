@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, WaypointStop, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay, getWaypointDate, formatWaypointDateDisplay } from '../../utils/dateUtils';
@@ -16,7 +16,7 @@ interface TripPlannerTabProps {
   onOpenSitePicker: (destination: string, stayNights: number, wpId: number, stopIdx: number) => void;
   onAddWaypoint: () => void;
   onClearAll: () => void;
-  onUpdateWaypoint: (wpId: number, updater: (wp: Waypoint) => Waypoint) => void;
+  onUpdateWaypoint: (wpId: number, updater: (wp) => Waypoint) => void;
   onRemoveWaypoint: (wpId: number) => void;
 }
 
@@ -108,6 +108,22 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   onRemoveWaypoint
 }) => {
   const attachedInputsRef = useRef<Set<HTMLInputElement>>(new Set());
+  const [collapsedStopSections, setCollapsedStopSections] = useState<Record<number, boolean>>({});
+  const [collapsedStops, setCollapsedStops] = useState<Record<number, boolean>>({});
+
+  const toggleStopsSection = (wpId: number) => {
+    setCollapsedStopSections(prev => ({
+      ...prev,
+      [wpId]: !prev[wpId]
+    }));
+  };
+
+  const toggleStopCollapse = (stopId: number) => {
+    setCollapsedStops(prev => ({
+      ...prev,
+      [stopId]: !prev[stopId]
+    }));
+  };
 
   const attachAutocomplete = (inputEl: HTMLInputElement | null, onSelected: (addr: string) => void) => {
     if (!inputEl || !window.google || !window.google.maps || !window.google.maps.places) return;
@@ -508,6 +524,30 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                   </div>
                 </div>
 
+                {/* Collapsed Waypoint Route Summary Strip */}
+                {!isExpanded && (
+                  <div className="flex items-center gap-2 text-xs bg-slate-900/60 border border-slate-700/60 rounded-xl px-3 py-2 text-slate-300 overflow-x-auto">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-bold text-emerald-400">🚩 {wp.origin || 'Starting Place'}</span>
+                    </div>
+                    {(wp.stops || []).map((stop, sIdx) => {
+                      const isLast = sIdx === ((wp.stops || []).length - 1);
+                      const icon = isLast ? '🏕️' : (profile.isEvTowVehicle ? '⚡' : '☕');
+                      return (
+                        <div key={stop.id || sIdx} className="flex items-center gap-1.5 shrink-0">
+                          <i className="fa-solid fa-arrow-right text-[10px] text-slate-500"></i>
+                          <span className={`text-xs ${isLast ? 'text-emerald-300 font-semibold' : 'text-slate-300'}`}>
+                            {icon} {stop.destination || `Stop ${sIdx + 1}`}
+                          </span>
+                          {stop.estMiles > 0 && (
+                            <span className="text-[10px] text-slate-500 font-mono">({stop.estMiles} mi)</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {isExpanded && (
                   <div className="space-y-3 pt-1">
                     <div>
@@ -529,236 +569,283 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
 
                     <div className="space-y-3 pl-2 sm:pl-4 border-l-2 border-slate-700/60">
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-                          Stops &amp; Daytime Itinerary ({wp.stops?.length || 1})
-                        </span>
+                        <button 
+                          type="button"
+                          onClick={() => toggleStopsSection(wp.id)}
+                          className="text-[11px] font-semibold text-slate-300 hover:text-emerald-400 uppercase tracking-wide flex items-center gap-1.5 transition cursor-pointer"
+                          title={collapsedStopSections[wp.id] ? "Expand stops list" : "Collapse stops list"}
+                        >
+                          <i className={`fa-solid fa-chevron-${collapsedStopSections[wp.id] ? 'right' : 'down'} text-emerald-400 text-xs`}></i>
+                          <span>Stops &amp; Daytime Itinerary ({wp.stops?.length || 1})</span>
+                        </button>
                         <button 
                           onClick={() => handleAddStop(wp.id)}
-                          className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg"
+                          className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg transition"
                         >
                           <i className="fa-solid fa-plus"></i> Add Stop
                         </button>
                       </div>
 
-                      {(wp.stops || []).map((stop, sIdx, arr) => {
-                        const prevLoc = sIdx === 0 ? wp.origin : arr[sIdx - 1].destination;
-                        const prevStop = sIdx > 0 ? arr[sIdx - 1] : null;
-                        const prevStopArrH = prevStop?.arrivalHour !== undefined ? prevStop.arrivalHour : 12;
-                        const prevStopArrM = prevStop?.arrivalMinute !== undefined ? prevStop.arrivalMinute : 0;
-                        const prevStopArrTotalMins = sIdx > 0 ? (prevStopArrH * 60 + prevStopArrM) : undefined;
-                        const formattedPrevArrTime = sIdx > 0 ? `${prevStopArrH % 12 || 12}:${prevStopArrM < 10 ? '0' : ''}${prevStopArrM} ${prevStopArrH >= 12 ? 'PM' : 'AM'}` : null;
-
-                        const stopArrH = stop.arrivalHour !== undefined ? stop.arrivalHour : 15;
-                        const stopArrM = stop.arrivalMinute !== undefined ? stop.arrivalMinute : 0;
-                        const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
-                        const weatherInfo = stop.destination ? destinationWeathers[stop.destination] : null;
-                        const isLastStopOfWaypoint = sIdx === (arr.length - 1);
-
-                        const currentDepH = stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 12);
-                        const currentDepM = stop.depMin !== undefined ? stop.depMin : 0;
-                        const currentDepAP = stop.depAmPm || (sIdx === 0 ? 'AM' : 'PM');
-                        const currentDepTotalMins = convertToTotalMinutes(currentDepH, currentDepM, currentDepAP);
-
-                        const layoverMins = sIdx > 0 && prevStopArrTotalMins !== undefined && currentDepTotalMins >= prevStopArrTotalMins
-                          ? currentDepTotalMins - prevStopArrTotalMins
-                          : 0;
-
-                        return (
-                          <div key={stop.id} className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[11px] font-bold text-emerald-400">Stop {sIdx + 1}</span>
-                                {isLastStopOfWaypoint ? (
-                                  <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-semibold">
-                                    🏕️ Overnight Destination ({stayCount}N)
-                                  </span>
-                                ) : (
-                                  <span className={`text-[10px] border px-1.5 py-0.5 rounded font-medium ${profile.isEvTowVehicle ? 'bg-cyan-950/40 text-cyan-300 border-cyan-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                                    {profile.isEvTowVehicle ? '⚡ EV Fast Charge' : '☕ Mid-day / Fuel Pause'}
-                                  </span>
-                                )}
-
-                                {sIdx > 0 && layoverMins > 0 && (
-                                  <span className="text-[10px] bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded font-medium" title={`Layover at Stop ${sIdx} before departure`}>
-                                    ⏱️ {layoverMins >= 60 ? `${Math.floor(layoverMins / 60)}h ${layoverMins % 60 > 0 ? `${layoverMins % 60}m` : ''}` : `${layoverMins}m`} break
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] text-slate-400">
-                                  Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}</strong>
+                      {collapsedStopSections[wp.id] ? (
+                        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-2.5 flex items-center gap-2 overflow-x-auto text-xs">
+                          <span className="text-[11px] text-slate-400 shrink-0">Route Stops:</span>
+                          {(wp.stops || []).map((stop, sIdx) => {
+                            const isLast = sIdx === ((wp.stops || []).length - 1);
+                            const icon = isLast ? '🏕️' : (profile.isEvTowVehicle ? '⚡' : '☕');
+                            return (
+                              <span key={stop.id || sIdx} className="flex items-center gap-1 shrink-0 text-slate-300">
+                                {sIdx > 0 && <i className="fa-solid fa-arrow-right text-[9px] text-slate-600"></i>}
+                                <span className={isLast ? "text-emerald-300 font-semibold" : "text-slate-300"}>
+                                  {icon} {stop.destination || `Stop ${sIdx + 1}`}
                                 </span>
-                                {arr.length > 1 && (
-                                  <div className="flex items-center gap-0.5 bg-slate-800/90 rounded-lg p-0.5 border border-slate-700">
-                                    <button 
-                                      type="button"
-                                      onClick={() => handleMoveStop(wp.id, sIdx, 'up')}
-                                      disabled={sIdx === 0}
-                                      className="text-slate-400 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-400 p-1 text-xs transition"
-                                      title="Move Stop Up"
-                                    >
-                                      <i className="fa-solid fa-arrow-up"></i>
-                                    </button>
-                                    <button 
-                                      type="button"
-                                      onClick={() => handleMoveStop(wp.id, sIdx, 'down')}
-                                      disabled={sIdx === arr.length - 1}
-                                      className="text-slate-400 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-400 p-1 text-xs transition"
-                                      title="Move Stop Down"
-                                    >
-                                      <i className="fa-solid fa-arrow-down"></i>
-                                    </button>
-                                  </div>
-                                )}
-                                {arr.length > 1 && (
+                                {stop.estMiles > 0 && <span className="text-[10px] text-slate-500 font-mono">({stop.estMiles} mi)</span>}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        (wp.stops || []).map((stop, sIdx, arr) => {
+                          const isStopExpanded = collapsedStops[stop.id] !== true;
+                          const prevLoc = sIdx === 0 ? wp.origin : arr[sIdx - 1].destination;
+                          const prevStop = sIdx > 0 ? arr[sIdx - 1] : null;
+                          const prevStopArrH = prevStop?.arrivalHour !== undefined ? prevStop.arrivalHour : 12;
+                          const prevStopArrM = prevStop?.arrivalMinute !== undefined ? prevStop.arrivalMinute : 0;
+                          const prevStopArrTotalMins = sIdx > 0 ? (prevStopArrH * 60 + prevStopArrM) : undefined;
+                          const formattedPrevArrTime = sIdx > 0 ? `${prevStopArrH % 12 || 12}:${prevStopArrM < 10 ? '0' : ''}${prevStopArrM} ${prevStopArrH >= 12 ? 'PM' : 'AM'}` : null;
+
+                          const stopArrH = stop.arrivalHour !== undefined ? stop.arrivalHour : 15;
+                          const stopArrM = stop.arrivalMinute !== undefined ? stop.arrivalMinute : 0;
+                          const formattedStopArrTime = `${stopArrH % 12 || 12}:${stopArrM < 10 ? '0' : ''}${stopArrM} ${stopArrH >= 12 ? 'PM' : 'AM'}`;
+                          const weatherInfo = stop.destination ? destinationWeathers[stop.destination] : null;
+                          const isLastStopOfWaypoint = sIdx === (arr.length - 1);
+
+                          const currentDepH = stop.depHour !== undefined ? stop.depHour : (sIdx === 0 ? 8 : 12);
+                          const currentDepM = stop.depMin !== undefined ? stop.depMin : 0;
+                          const currentDepAP = stop.depAmPm || (sIdx === 0 ? 'AM' : 'PM');
+                          const currentDepTotalMins = convertToTotalMinutes(currentDepH, currentDepM, currentDepAP);
+
+                          const layoverMins = sIdx > 0 && prevStopArrTotalMins !== undefined && currentDepTotalMins >= prevStopArrTotalMins
+                            ? currentDepTotalMins - prevStopArrTotalMins
+                            : 0;
+
+                          return (
+                            <div key={stop.id} className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <button 
                                     type="button"
-                                    onClick={() => handleRemoveStop(wp.id, stop.id)}
-                                    className="text-slate-500 hover:text-red-400 p-1 text-xs"
-                                    title="Remove this stop"
+                                    onClick={() => toggleStopCollapse(stop.id)}
+                                    className="text-slate-400 hover:text-emerald-400 p-0.5 text-xs transition"
+                                    title={isStopExpanded ? "Collapse this stop" : "Expand this stop"}
                                   >
-                                    <i className="fa-solid fa-xmark"></i>
+                                    <i className={`fa-solid fa-chevron-${isStopExpanded ? 'down' : 'right'}`}></i>
                                   </button>
-                                )}
-                              </div>
-                            </div>
 
-                            {/* Destination Input, Departure Time Selects & Navigate Button */}
-                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                              <div className="sm:col-span-12 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-                                <div className="flex-1">
-                                  <label className="block text-[10px] text-slate-400 mb-1">
-                                    {isLastStopOfWaypoint ? "Evening Destination (Campground / Hotel)" : "Daytime Stop (Fuel / Lunch / Scenic)"}
-                                  </label>
-                                  <input 
-                                    ref={(el) => {
-                                      attachAutocomplete(el, (addr) => {
-                                        onUpdateWaypoint(wp.id, (prev) => ({
-                                          ...prev,
-                                          stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
-                                        }));
-                                      });
-                                    }}
-                                    type="text" 
-                                    value={stop.destination} 
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      onUpdateWaypoint(wp.id, (prev) => ({
-                                        ...prev,
-                                        stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val } : s)
-                                      }));
-                                    }}
-                                    placeholder={isLastStopOfWaypoint ? "Evening destination or RV park..." : "Lunch, gas or scenic stop..."} 
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
-                                  />
+                                  <span className="text-[11px] font-bold text-emerald-400">Stop {sIdx + 1}</span>
+
+                                  {/* Destination preview when stop is collapsed */}
+                                  {!isStopExpanded && (
+                                    <span className="text-xs font-semibold text-slate-200 truncate max-w-[180px] sm:max-w-xs" title={stop.destination || 'Unset stop'}>
+                                      {stop.destination || <span className="text-slate-500 italic">No destination set</span>}
+                                    </span>
+                                  )}
+
+                                  {isLastStopOfWaypoint ? (
+                                    <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-semibold">
+                                      🏕️ Overnight Destination ({stayCount}N)
+                                    </span>
+                                  ) : (
+                                    <span className={`text-[10px] border px-1.5 py-0.5 rounded font-medium ${profile.isEvTowVehicle ? 'bg-cyan-950/40 text-cyan-300 border-cyan-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                                      {profile.isEvTowVehicle ? '⚡ EV Fast Charge' : '☕ Mid-day / Fuel Pause'}
+                                    </span>
+                                  )}
+
+                                  {sIdx > 0 && layoverMins > 0 && isStopExpanded && (
+                                    <span className="text-[10px] bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded font-medium" title={`Layover at Stop ${sIdx} before departure`}>
+                                      ⏱️ {layoverMins >= 60 ? `${Math.floor(layoverMins / 60)}h ${layoverMins % 60 > 0 ? `${layoverMins % 60}m` : ''}` : `${layoverMins}m`} break
+                                    </span>
+                                  )}
                                 </div>
-
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <div>
-                                    <div className="flex items-center justify-between gap-1 mb-1">
-                                      <label className="text-[10px] text-slate-400">Departure Time</label>
-                                      {sIdx > 0 && formattedPrevArrTime && (
-                                        <span className="text-[9px] text-emerald-400 font-medium" title="Earliest allowed departure">
-                                          (&ge; {formattedPrevArrTime})
-                                        </span>
-                                      )}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] text-slate-400">
+                                    Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}</strong>
+                                  </span>
+                                  {arr.length > 1 && (
+                                    <div className="flex items-center gap-0.5 bg-slate-800/90 rounded-lg p-0.5 border border-slate-700">
+                                      <button 
+                                        type="button"
+                                        onClick={() => handleMoveStop(wp.id, sIdx, 'up')}
+                                        disabled={sIdx === 0}
+                                        className="text-slate-400 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-400 p-1 text-xs transition"
+                                        title="Move Stop Up"
+                                      >
+                                        <i className="fa-solid fa-arrow-up"></i>
+                                      </button>
+                                      <button 
+                                        type="button"
+                                        onClick={() => handleMoveStop(wp.id, sIdx, 'down')}
+                                        disabled={sIdx === arr.length - 1}
+                                        className="text-slate-400 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-400 p-1 text-xs transition"
+                                        title="Move Stop Down"
+                                      >
+                                        <i className="fa-solid fa-arrow-down"></i>
+                                      </button>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                      <select 
-                                        value={currentDepH} 
-                                        onChange={(e) => {
-                                          const val = parseInt(e.target.value, 10);
-                                          handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, val, currentDepM, currentDepAP as 'AM' | 'PM', prevStopArrTotalMins);
-                                        }}
-                                        className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-                                      >
-                                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
-                                          <option key={h} value={h}>{h}</option>
-                                        ))}
-                                      </select>
-                                      <span className="text-slate-400 font-bold">:</span>
-                                      <select 
-                                        value={currentDepM} 
-                                        onChange={(e) => {
-                                          const val = parseInt(e.target.value, 10);
-                                          handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, val, currentDepAP as 'AM' | 'PM', prevStopArrTotalMins);
-                                        }}
-                                        className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-                                      >
-                                        {Array.from(new Set([0, 15, 30, 45, currentDepM])).sort((a, b) => a - b).map(m => (
-                                          <option key={m} value={m}>{m < 10 ? `0${m}` : m}</option>
-                                        ))}
-                                      </select>
-                                      <div className="flex bg-slate-900 border border-slate-700 rounded-lg overflow-hidden shrink-0">
-                                        <button 
-                                          type="button" 
-                                          onClick={() => {
-                                            handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, currentDepM, 'AM', prevStopArrTotalMins);
-                                          }} 
-                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${currentDepAP === 'AM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                  )}
+                                  {arr.length > 1 && (
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleRemoveStop(wp.id, stop.id)}
+                                      className="text-slate-500 hover:text-red-400 p-1 text-xs"
+                                      title="Remove this stop"
+                                    >
+                                      <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Destination Input, Departure Time Selects & Navigate Button */}
+                              {isStopExpanded && (
+                                <>
+                                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                                    <div className="sm:col-span-12 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                                      <div className="flex-1">
+                                        <label className="block text-[10px] text-slate-400 mb-1">
+                                          {isLastStopOfWaypoint ? "Evening Destination (Campground / Hotel)" : "Daytime Stop (Fuel / Lunch / Scenic)"}
+                                        </label>
+                                        <input 
+                                          ref={(el) => {
+                                            attachAutocomplete(el, (addr) => {
+                                              onUpdateWaypoint(wp.id, (prev) => ({
+                                                ...prev,
+                                                stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
+                                              }));
+                                            });
+                                          }}
+                                          type="text" 
+                                          value={stop.destination} 
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            onUpdateWaypoint(wp.id, (prev) => ({
+                                              ...prev,
+                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val } : s)
+                                            }));
+                                          }}
+                                          placeholder={isLastStopOfWaypoint ? "Evening destination or RV park..." : "Lunch, gas or scenic stop..."} 
+                                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                                        />
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <div>
+                                          <div className="flex items-center justify-between gap-1 mb-1">
+                                            <label className="text-[10px] text-slate-400">Departure Time</label>
+                                            {sIdx > 0 && formattedPrevArrTime && (
+                                              <span className="text-[9px] text-emerald-400 font-medium" title="Earliest allowed departure">
+                                                (&ge; {formattedPrevArrTime})
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <select 
+                                              value={currentDepH} 
+                                              onChange={(e) => {
+                                                const val = parseInt(e.target.value, 10);
+                                                handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, val, currentDepM, currentDepAP as 'AM' | 'PM', prevStopArrTotalMins);
+                                              }}
+                                              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                                            >
+                                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
+                                                <option key={h} value={h}>{h}</option>
+                                              ))}
+                                            </select>
+                                            <span className="text-slate-400 font-bold">:</span>
+                                            <select 
+                                              value={currentDepM} 
+                                              onChange={(e) => {
+                                                const val = parseInt(e.target.value, 10);
+                                                handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, val, currentDepAP as 'AM' | 'PM', prevStopArrTotalMins);
+                                              }}
+                                              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                                            >
+                                              {Array.from(new Set([0, 15, 30, 45, currentDepM])).sort((a, b) => a - b).map(m => (
+                                                <option key={m} value={m}>{m < 10 ? `0${m}` : m}</option>
+                                              ))}
+                                            </select>
+                                            <div className="flex bg-slate-900 border border-slate-700 rounded-lg overflow-hidden shrink-0">
+                                              <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                  handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, currentDepM, 'AM', prevStopArrTotalMins);
+                                                }} 
+                                                className={`px-2 py-1.5 text-[11px] font-semibold transition ${currentDepAP === 'AM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                              >
+                                                AM
+                                              </button>
+                                              <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                  handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, currentDepM, 'PM', prevStopArrTotalMins);
+                                                }} 
+                                                className={`px-2 py-1.5 text-[11px] font-semibold transition ${currentDepAP === 'PM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                              >
+                                                PM
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <a 
+                                          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(prevLoc || '')}&destination=${encodeURIComponent(stop.destination || '')}&travelmode=driving`} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-[11px] flex items-center gap-1.5 transition shadow shrink-0 self-end"
+                                          title="Navigate"
                                         >
-                                          AM
-                                        </button>
-                                        <button 
-                                          type="button" 
-                                          onClick={() => {
-                                            handleUpdateStopDepartureTime(wp.id, stop.id, sIdx, currentDepH, currentDepM, 'PM', prevStopArrTotalMins);
-                                          }} 
-                                          className={`px-2 py-1.5 text-[11px] font-semibold transition ${currentDepAP === 'PM' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                                        >
-                                          PM
-                                        </button>
+                                          <i className="fa-solid fa-location-arrow"></i> Navigate
+                                        </a>
                                       </div>
                                     </div>
                                   </div>
 
-                                  <a 
-                                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(prevLoc || '')}&destination=${encodeURIComponent(stop.destination || '')}&travelmode=driving`} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-[11px] flex items-center gap-1.5 transition shadow shrink-0 self-end"
-                                    title="Navigate"
-                                  >
-                                    <i className="fa-solid fa-location-arrow"></i> Navigate
-                                  </a>
-                                </div>
-                              </div>
-                            </div>
+                                  {/* Stop Action Bar */}
+                                  <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2 text-slate-300 flex-wrap">
+                                      {stop.destination && (
+                                        <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
+                                          <i className="fa-solid fa-cloud-sun text-sky-400"></i>
+                                          <span>Local Weather: <strong>{weatherInfo ? `${weatherInfo.temp}, ${weatherInfo.condition}` : 'Fetching live weather...'}</strong></span>
+                                        </div>
+                                      )}
 
-                            {/* Stop Action Bar */}
-                            <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] flex items-center justify-between flex-wrap gap-2">
-                              <div className="flex items-center gap-2 text-slate-300 flex-wrap">
-                                {stop.destination && (
-                                  <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
-                                    <i className="fa-solid fa-cloud-sun text-sky-400"></i>
-                                    <span>Local Weather: <strong>{weatherInfo ? `${weatherInfo.temp}, ${weatherInfo.condition}` : 'Fetching live weather...'}</strong></span>
+                                      {weatherInfo && weatherInfo.hazardAlert && (
+                                        <div className="bg-red-500/20 border border-red-500/40 text-red-300 px-2 py-1 rounded font-bold flex items-center gap-1.5 animate-pulse">
+                                          <i className="fa-solid fa-triangle-exclamation"></i>
+                                          <span>{weatherInfo.hazardAlert}</span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* RV Site Picker Button for Final Overnight Stop */}
+                                    {isLastStopOfWaypoint && stop.destination && stayCount > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenSitePicker(stop.destination, stayCount, wp.id, sIdx)}
+                                        className="bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
+                                        title={`Compare and pick top RV campgrounds in ${stop.destination}`}
+                                      >
+                                        <i className="fa-solid fa-campground text-amber-300"></i>
+                                        <span>RV Site Picker</span>
+                                      </button>
+                                    )}
                                   </div>
-                                )}
-
-                                {weatherInfo && weatherInfo.hazardAlert && (
-                                  <div className="bg-red-500/20 border border-red-500/40 text-red-300 px-2 py-1 rounded font-bold flex items-center gap-1.5 animate-pulse">
-                                    <i className="fa-solid fa-triangle-exclamation"></i>
-                                    <span>{weatherInfo.hazardAlert}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* RV Site Picker Button for Final Overnight Stop */}
-                              {isLastStopOfWaypoint && stop.destination && stayCount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenSitePicker(stop.destination, stayCount, wp.id, sIdx)}
-                                  className="bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
-                                  title={`Compare and pick top RV campgrounds in ${stop.destination}`}
-                                >
-                                  <i className="fa-solid fa-campground text-amber-300"></i>
-                                  <span>RV Site Picker</span>
-                                </button>
+                                </>
                               )}
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      )}
                     </div>
 
                     <div>
