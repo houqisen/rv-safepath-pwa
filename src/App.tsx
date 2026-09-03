@@ -374,10 +374,12 @@ export default function App() {
 
   // AI Copilot Plan Handler
   const handleApplyAiPlan = (plan: AiPlanPreview, mode: 'replace' | 'append', startDate?: string) => {
-    if (startDate) {
+    // Only update tripStartDate if mode is 'replace' OR if no start date was previously set
+    if (startDate && (mode === 'replace' || !tripStartDate)) {
       setTripStartDate(startDate);
       localStorage.setItem('rv_trip_start_date', startDate);
     }
+
     const newWaypoints: Waypoint[] = plan.waypoints.map((item: any, idx: number) => {
       let stopsList: WaypointStop[] = [];
       if (item.stops && Array.isArray(item.stops) && item.stops.length > 0) {
@@ -406,6 +408,11 @@ export default function App() {
         }];
       }
 
+      // Default stayNights to >= 1 for overnight destinations unless explicitly marked as returning home
+      const nights = item.stayNights !== undefined && item.stayNights !== null
+        ? (item.isHomeReturn ? 0 : Math.max(1, Number(item.stayNights) || 1))
+        : 1;
+
       return {
         id: Date.now() + idx * 1000,
         origin: item.origin || '',
@@ -413,7 +420,7 @@ export default function App() {
         isHomeReturn: !!item.isHomeReturn,
         stops: stopsList,
         notes: item.notes || '',
-        stayNights: item.stayNights !== undefined ? item.stayNights : 1,
+        stayNights: nights,
         estMiles: 0,
         estHours: 0,
         arrivalHour: 15,
@@ -424,7 +431,20 @@ export default function App() {
     if (mode === 'replace') {
       setWaypoints(newWaypoints);
     } else {
-      setWaypoints(prev => [...prev, ...newWaypoints]);
+      // When appending, if the first appended waypoint does not have an explicit origin, connect it to the last existing destination
+      let connectedWaypoints = newWaypoints;
+      if (waypoints.length > 0 && connectedWaypoints.length > 0) {
+        const lastExistingWp = waypoints[waypoints.length - 1];
+        const lastExistingStop = lastExistingWp?.stops?.[lastExistingWp.stops.length - 1];
+        const lastExistingDest = lastExistingStop?.destination || lastExistingWp?.origin;
+        if (lastExistingDest && (!connectedWaypoints[0].origin || connectedWaypoints[0].origin.trim() === '')) {
+          connectedWaypoints = [
+            { ...connectedWaypoints[0], origin: lastExistingDest },
+            ...connectedWaypoints.slice(1)
+          ];
+        }
+      }
+      setWaypoints(prev => [...prev, ...connectedWaypoints]);
     }
   };
 
