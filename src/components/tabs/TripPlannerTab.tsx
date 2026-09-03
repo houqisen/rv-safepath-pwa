@@ -873,11 +873,11 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                       )}
                                     </div>
 
-                                    {/* RV Site Picker Button for Final Overnight Stop (Suppressed for Residential Addresses) */}
-                                    {isLastStopOfWaypoint && stop.destination && stayCount > 0 && !isResidentialAddress(stop.destination) && (
+                                    {/* RV Site Picker Button for Final Overnight Stop (Suppressed for Home Returns and Residential Addresses) */}
+                                    {isLastStopOfWaypoint && stop.destination && !wp.isHomeReturn && !isResidentialAddress(stop.destination) && (
                                       <button
                                         type="button"
-                                        onClick={() => onOpenSitePicker(stop.destination, stayCount, wp.id, sIdx)}
+                                        onClick={() => onOpenSitePicker(stop.destination, stayCount > 0 ? stayCount : 1, wp.id, sIdx)}
                                         className="bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-semibold px-3 py-1.5 rounded-xl text-[11px] flex items-center gap-1.5 shadow-sm transition"
                                         title={`Compare and pick top RV campgrounds in ${stop.destination}`}
                                       >
@@ -886,10 +886,10 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                       </button>
                                     )}
 
-                                    {isLastStopOfWaypoint && stop.destination && isResidentialAddress(stop.destination) && (
-                                      <span className="text-[10px] bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2 py-1 rounded-lg flex items-center gap-1.5" title="Residential destination / private driveway">
+                                    {isLastStopOfWaypoint && stop.destination && (wp.isHomeReturn || isResidentialAddress(stop.destination)) && (
+                                      <span className="text-[10px] bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2 py-1 rounded-lg flex items-center gap-1.5" title={wp.isHomeReturn ? "Return Home" : "Residential destination / private driveway"}>
                                         <i className="fa-solid fa-house-user text-slate-400"></i>
-                                        <span>Residential Destination</span>
+                                        <span>{wp.isHomeReturn ? "Return Home" : "Residential Destination"}</span>
                                       </span>
                                     )}
                                   </div>
