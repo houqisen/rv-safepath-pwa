@@ -8,6 +8,13 @@ export interface WaypointStop {
   estHours: number;
   arrivalHour: number;
   arrivalMinute: number;
+  // CR #1 Time Zone Support
+  timeZoneAbbr?: string;
+  timeZoneOffsetHours?: number;
+  timeZoneShiftFromPrev?: number;
+  // CR #3 Reachability & Road Closure Alerts
+  isUnreachable?: boolean;
+  reachabilityWarning?: string | null;
 }
 
 export interface Waypoint {
@@ -22,6 +29,10 @@ export interface Waypoint {
   estHours: number;
   arrivalHour: number;
   arrivalMinute: number;
+  // CR #1 & CR #3 Waypoint-level summaries
+  destTimeZoneAbbr?: string;
+  totalTimeZoneShift?: number;
+  hasUnreachableStop?: boolean;
 }
 
 export interface AiPlanPreview {
