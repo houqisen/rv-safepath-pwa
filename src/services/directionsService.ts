@@ -1,6 +1,7 @@
 import { Waypoint, WaypointStop } from '../types/itinerary';
 import { RouteSummary } from '../types/places';
 import { RvProfile } from '../types/rv';
+import { calculateTimeZoneShift, getTimeZoneInfo } from '../utils/timezoneUtils';
 
 export function calculateWaypointMetricsService(
   waypoint: Waypoint,
@@ -18,7 +19,8 @@ export function calculateWaypointMetricsService(
       estMiles: 0,
       estHours: 0,
       arrivalHour: 15,
-      arrivalMinute: 0
+      arrivalMinute: 0,
+      hasUnreachableStop: false
     });
     return;
   }
@@ -37,9 +39,11 @@ export function calculateWaypointMetricsService(
     (result, status) => {
       if (status === window.google.maps.DirectionsStatus.OK && result && result.routes[0]) {
         const legs = result.routes[0].legs;
+        const warnings = result.routes[0].warnings || [];
+        const closureWarning = warnings.find(w => /closed|closure|wildfire|hazard|emergency|snow|ferry/i.test(w)) || null;
+
         let totalMeters = 0;
         let totalSeconds = 0;
-
         let prevArrivalTotalMins = 0;
 
         const updatedStops: WaypointStop[] = stops.map((stop, sIdx) => {
@@ -71,14 +75,23 @@ export function calculateWaypointMetricsService(
             depAP = newDepH24 >= 12 ? 'PM' : 'AM';
           }
 
-          // Calculate arrival time for this stop
-          const stopArrTotalMins = stopDepTotalMins + legDrivingMins;
-          const arrH24 = Math.floor(stopArrTotalMins / 60) % 24;
-          const arrH = arrH24;
-          const arrM = stopArrTotalMins % 60;
+          // CR #1: Calculate time zone shift for this leg
+          const legDepAddr = sIdx === 0 ? origin : stops[sIdx - 1].destination;
+          const legDestAddr = stop.destination;
+          const depCoords = leg.start_location ? { lat: leg.start_location.lat(), lng: leg.start_location.lng() } : undefined;
+          const destCoords = leg.end_location ? { lat: leg.end_location.lat(), lng: leg.end_location.lng() } : undefined;
 
-          // Update prevArrivalTotalMins for the next stop
-          prevArrivalTotalMins = stopArrTotalMins;
+          const tzResult = calculateTimeZoneShift(legDepAddr, legDestAddr, depCoords, destCoords);
+          const tzShiftHours = tzResult.shiftHours;
+
+          // Arrival time in destination's local time: Departure + Driving Time + Time Zone Shift
+          const rawArrTotalMins = stopDepTotalMins + legDrivingMins + Math.round(tzShiftHours * 60);
+          const normArrTotalMins = ((rawArrTotalMins % 1440) + 1440) % 1440;
+          const arrH24 = Math.floor(normArrTotalMins / 60);
+          const arrM = normArrTotalMins % 60;
+
+          // Update prevArrivalTotalMins for subsequent stop (in current stop's local time)
+          prevArrivalTotalMins = normArrTotalMins;
 
           return {
             ...stop,
@@ -87,8 +100,13 @@ export function calculateWaypointMetricsService(
             depAmPm: depAP,
             estMiles: legMiles,
             estHours: legHours,
-            arrivalHour: arrH,
-            arrivalMinute: arrM
+            arrivalHour: arrH24,
+            arrivalMinute: arrM,
+            timeZoneAbbr: tzResult.destTz.abbr,
+            timeZoneOffsetHours: tzResult.destTz.offsetHours,
+            timeZoneShiftFromPrev: tzShiftHours,
+            isUnreachable: false,
+            reachabilityWarning: closureWarning || null
           };
         });
 
@@ -103,17 +121,90 @@ export function calculateWaypointMetricsService(
         const finalArrH = finalStop ? finalStop.arrivalHour : 15;
         const finalArrM = finalStop ? finalStop.arrivalMinute : 0;
 
+        const originTz = getTimeZoneInfo(origin);
+        const finalTz = finalStop?.timeZoneAbbr ? { abbr: finalStop.timeZoneAbbr, offsetHours: finalStop.timeZoneOffsetHours || originTz.offsetHours } : originTz;
+        const totalTzShift = Math.round((finalTz.offsetHours - originTz.offsetHours) * 10) / 10;
+
         onCalculated({
           ...waypoint,
           stops: updatedStops,
           estMiles: totalMiles,
           estHours: totalHours,
           arrivalHour: finalArrH,
-          arrivalMinute: finalArrM
+          arrivalMinute: finalArrM,
+          destTimeZoneAbbr: finalTz.abbr,
+          totalTimeZoneShift: totalTzShift,
+          hasUnreachableStop: false
+        });
+      } else {
+        // CR #3: Route failed (ZERO_RESULTS or NOT_FOUND) -> Pinpoint which stop is unreachable
+        console.warn("Directions route returned status:", status, "- verifying individual leg reachability...");
+        checkIndividualLegReachability(directionsService, origin, stops).then((diagnosedStops) => {
+          const hasUnreachable = diagnosedStops.some(s => s.isUnreachable);
+          onCalculated({
+            ...waypoint,
+            stops: diagnosedStops,
+            hasUnreachableStop: hasUnreachable
+          });
         });
       }
     }
   );
+}
+
+/**
+ * Fallback diagnostic: tests individual legs when composite route fails,
+ * isolating exactly which stop is unreachable due to road closures, wildfires, or terrain.
+ */
+async function checkIndividualLegReachability(
+  directionsService: google.maps.DirectionsService,
+  origin: string,
+  stops: WaypointStop[]
+): Promise<WaypointStop[]> {
+  const diagnosed = [...stops];
+
+  for (let i = 0; i < diagnosed.length; i++) {
+    const from = i === 0 ? origin : diagnosed[i - 1].destination;
+    const to = diagnosed[i].destination;
+
+    if (!from?.trim() || !to?.trim()) continue;
+
+    await new Promise<void>((resolve) => {
+      directionsService.route(
+        {
+          origin: from,
+          destination: to,
+          travelMode: window.google.maps.TravelMode.DRIVING
+        },
+        (res, st) => {
+          if (st === window.google.maps.DirectionsStatus.OK && res && res.routes[0]) {
+            const leg = res.routes[0].legs[0];
+            const miles = Math.round(((leg.distance?.value || 0) / 1609.34) * 10) / 10;
+            const hours = (leg.duration?.value || 0) / 3600;
+            const warnings = res.routes[0].warnings || [];
+            const closureWarn = warnings.find(w => /closed|closure|wildfire|hazard|emergency|snow/i.test(w)) || null;
+
+            diagnosed[i] = {
+              ...diagnosed[i],
+              estMiles: miles,
+              estHours: hours,
+              isUnreachable: false,
+              reachabilityWarning: closureWarn
+            };
+          } else {
+            diagnosed[i] = {
+              ...diagnosed[i],
+              isUnreachable: true,
+              reachabilityWarning: "No drivable route found. The road may be closed due to wildfires, seasonal conditions, or impassable terrain."
+            };
+          }
+          resolve();
+        }
+      );
+    });
+  }
+
+  return diagnosed;
 }
 
 export function calculateSafeRouteService(
