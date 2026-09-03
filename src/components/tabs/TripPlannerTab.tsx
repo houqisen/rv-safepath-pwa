@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, WaypointStop, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay, getWaypointDate, formatWaypointDateDisplay } from '../../utils/dateUtils';
-import { formatResolvedPlaceAddress } from '../../utils/addressUtils';
+import { formatResolvedPlaceAddress, isResidentialAddress } from '../../utils/addressUtils';
 
 interface TripPlannerTabProps {
   waypoints: Waypoint[];
@@ -75,11 +75,13 @@ function adjustWaypointStopsSchedule(
       ? Math.round(stop.estHours * 60)
       : (stop.estMiles && stop.estMiles > 0 ? Math.round((stop.estMiles / 50) * 60) : 60);
 
-    const arrTotalMins = Math.min(24 * 60 - 1, depTotalMins + legDrivingMins);
-    const arrH24 = Math.floor(arrTotalMins / 60) % 24;
-    const arrM = arrTotalMins % 60;
+    const tzShiftMins = Math.round((stop.timeZoneShiftFromPrev || 0) * 60);
+    const rawArrTotalMins = depTotalMins + legDrivingMins + tzShiftMins;
+    const normArrTotalMins = ((rawArrTotalMins % 1440) + 1440) % 1440;
+    const arrH24 = Math.floor(normArrTotalMins / 60);
+    const arrM = normArrTotalMins % 60;
 
-    prevArrTotalMins = arrTotalMins;
+    prevArrTotalMins = normArrTotalMins;
 
     return {
       ...stop,
@@ -503,7 +505,17 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                     )}
 
                     <span className="text-xs text-slate-300 font-medium">
-                      Day Distance: <strong className="text-emerald-400">{wp.estMiles} mi</strong> | Camp Arrival: <strong className={breaksTime ? 'text-amber-400 font-bold' : 'text-emerald-400'}>{formattedArrTime}</strong>
+                      Day Distance: <strong className="text-emerald-400">{wp.estMiles} mi</strong> | Camp Arrival: <strong className={breaksTime ? 'text-amber-400 font-bold' : 'text-emerald-400'}>{formattedArrTime}{wp.destTimeZoneAbbr ? ` (${wp.destTimeZoneAbbr})` : ''}</strong>
+                      {wp.totalTimeZoneShift && wp.totalTimeZoneShift !== 0 ? (
+                        <span className="ml-1.5 text-[10px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded font-semibold" title="Net day time zone change">
+                          ⏰ {wp.totalTimeZoneShift > 0 ? `+${wp.totalTimeZoneShift}h` : `${wp.totalTimeZoneShift}h`} Time Zone
+                        </span>
+                      ) : null}
+                      {wp.hasUnreachableStop && (
+                        <span className="ml-1.5 bg-red-500/25 border border-red-500/50 text-red-300 px-2 py-0.5 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 animate-pulse">
+                          <i className="fa-solid fa-triangle-exclamation"></i> Road Closed / Unreachable
+                        </span>
+                      )}
                     </span>
                   </div>
 
@@ -539,8 +551,16 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                           <span className={`text-xs ${isLast ? 'text-emerald-300 font-semibold' : 'text-slate-300'}`}>
                             {icon} {stop.destination || `Stop ${sIdx + 1}`}
                           </span>
+                          {stop.timeZoneAbbr && (
+                            <span className="text-[9px] text-sky-400 bg-sky-950/40 border border-sky-500/20 px-1 py-0.2 rounded font-mono">
+                              {stop.timeZoneAbbr}
+                            </span>
+                          )}
                           {stop.estMiles > 0 && (
                             <span className="text-[10px] text-slate-500 font-mono">({stop.estMiles} mi)</span>
+                          )}
+                          {stop.isUnreachable && (
+                            <span className="text-[10px] text-red-400 font-bold">⚠️ Road Closed</span>
                           )}
                         </div>
                       );
@@ -668,7 +688,12 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-[11px] text-slate-400">
-                                    Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}</strong>
+                                    Leg: <strong className="text-emerald-300">{stop.estMiles || 0} mi</strong> | Arr: <strong className="text-slate-200">{formattedStopArrTime}{stop.timeZoneAbbr ? ` ${stop.timeZoneAbbr}` : ''}</strong>
+                                    {stop.timeZoneShiftFromPrev && stop.timeZoneShiftFromPrev !== 0 ? (
+                                      <span className="ml-1 text-[9px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1 py-0.5 rounded font-medium" title="Leg time zone change">
+                                        ⏰ {stop.timeZoneShiftFromPrev > 0 ? `+${stop.timeZoneShiftFromPrev}h` : `${stop.timeZoneShiftFromPrev}h`}
+                                      </span>
+                                    ) : null}
                                   </span>
                                   {arr.length > 1 && (
                                     <div className="flex items-center gap-0.5 bg-slate-800/90 rounded-lg p-0.5 border border-slate-700">
@@ -708,6 +733,27 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                               {/* Destination Input, Departure Time Selects & Navigate Button */}
                               {isStopExpanded && (
                                 <>
+                                  {/* Reachability and Road Closure Alerts */}
+                                  {stop.isUnreachable && (
+                                    <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-2.5 flex items-start gap-2 text-red-200 text-xs">
+                                      <i className="fa-solid fa-triangle-exclamation text-red-400 text-sm mt-0.5 shrink-0"></i>
+                                      <div>
+                                        <div className="font-bold text-red-300 flex items-center gap-1.5">
+                                          <span>Unreachable Destination / Road Closure</span>
+                                        </div>
+                                        <div className="text-[11px] text-red-200/90 mt-0.5">
+                                          {stop.reachabilityWarning || "No drivable road route found to this stop. The road may be closed due to wildfires, seasonal snow, or active road closures. Please check alternate routes or select another stop."}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {!stop.isUnreachable && stop.reachabilityWarning && (
+                                    <div className="bg-amber-500/15 border border-amber-500/40 rounded-xl p-2 flex items-start gap-2 text-amber-200 text-xs">
+                                      <i className="fa-solid fa-circle-info text-amber-400 text-xs mt-0.5 shrink-0"></i>
+                                      <span className="text-[11px] text-amber-300/90">{stop.reachabilityWarning}</span>
+                                    </div>
+                                  )}
                                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                                     <div className="sm:col-span-12 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                                       <div className="flex-1">
@@ -827,8 +873,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                       )}
                                     </div>
 
-                                    {/* RV Site Picker Button for Final Overnight Stop */}
-                                    {isLastStopOfWaypoint && stop.destination && stayCount > 0 && (
+                                    {/* RV Site Picker Button for Final Overnight Stop (Suppressed for Residential Addresses) */}
+                                    {isLastStopOfWaypoint && stop.destination && stayCount > 0 && !isResidentialAddress(stop.destination) && (
                                       <button
                                         type="button"
                                         onClick={() => onOpenSitePicker(stop.destination, stayCount, wp.id, sIdx)}
@@ -838,6 +884,13 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                         <i className="fa-solid fa-campground text-amber-300"></i>
                                         <span>RV Site Picker</span>
                                       </button>
+                                    )}
+
+                                    {isLastStopOfWaypoint && stop.destination && isResidentialAddress(stop.destination) && (
+                                      <span className="text-[10px] bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2 py-1 rounded-lg flex items-center gap-1.5" title="Residential destination / private driveway">
+                                        <i className="fa-solid fa-house-user text-slate-400"></i>
+                                        <span>Residential Destination</span>
+                                      </span>
                                     )}
                                   </div>
                                 </>
