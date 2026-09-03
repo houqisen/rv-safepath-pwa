@@ -40,3 +40,42 @@ export const formatResolvedPlaceAddress = (place: any): string => {
   }
   return addr || name || '';
 };
+
+/**
+ * Checks if a given destination address represents a private residential street address
+ * (e.g. driveway, family house, or home return) where an RV campground site picker is not required.
+ */
+export const isResidentialAddress = (address: string): boolean => {
+  if (!address || !address.trim()) return false;
+  const lower = address.toLowerCase().trim();
+
+  // Commercial / campground / park / lodging keywords that SHOULD show RV site picker
+  const campingKeywords = [
+    'rv', 'campground', 'camping', 'camp', 'koa', 'resort', 'state park',
+    'national park', 'provincial park', 'blm', 'recreation', 'rec area',
+    'marina', 'hotel', 'motel', 'lodge', 'inn', 'suites', 'casino',
+    'fairground', 'fairgrounds', 'travel plaza', 'flying j', 'pilot', "love's",
+    'walmart', 'cracker barrel'
+  ];
+
+  if (campingKeywords.some(kw => lower.includes(kw))) {
+    return false;
+  }
+
+  // Explicit private residence keywords
+  if (
+    lower.includes('home') ||
+    lower.includes('residence') ||
+    lower.includes('driveway') ||
+    lower.includes('moochdock') ||
+    lower.includes('my house')
+  ) {
+    return true;
+  }
+
+  // Check if address starts with a street building number: e.g. "14205 SE 36th St", "10376 152 St"
+  const startsWithStreetNumber = /^\d+[\w\s-]*\b(street|st|avenue|ave|road|rd|drive|dr|lane|ln|way|court|ct|boulevard|blvd|place|pl|circle|cir|terrace|ter|loop|trail|trl|pkwy|parkway|crescent|cres|highway|hwy)\b/i.test(lower) ||
+    /^\d+\s+[A-Za-z0-9\s.]+,\s*[A-Za-z\s]+,\s*[A-Z]{2}\b/i.test(address);
+
+  return startsWithStreetNumber;
+};
