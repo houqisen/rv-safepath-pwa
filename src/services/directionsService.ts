@@ -191,11 +191,19 @@ async function checkIndividualLegReachability(
               isUnreachable: false,
               reachabilityWarning: closureWarn
             };
-          } else {
+          } else if (st === window.google.maps.DirectionsStatus.ZERO_RESULTS) {
+            // ZERO_RESULTS means locations were geocoded, but no driving path exists (e.g. wildfire road closure)
             diagnosed[i] = {
               ...diagnosed[i],
               isUnreachable: true,
               reachabilityWarning: "No drivable route found. The road may be closed due to wildfires, seasonal conditions, or impassable terrain."
+            };
+          } else {
+            // NOT_FOUND (incomplete typing), REQUEST_DENIED, OVER_QUERY_LIMIT, etc.
+            diagnosed[i] = {
+              ...diagnosed[i],
+              isUnreachable: false,
+              reachabilityWarning: null
             };
           }
           resolve();
