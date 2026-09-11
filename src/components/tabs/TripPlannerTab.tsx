@@ -574,13 +574,13 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                       <label className="block text-[11px] text-slate-400 mb-1">Starting Place (Origin)</label>
                       <input 
                         ref={(el) => {
-                          attachAutocomplete(el, (addr) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: addr })));
+                          attachAutocomplete(el, (addr) => onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: addr, hasUnreachableStop: false })));
                         }}
                         type="text" 
                         value={wp.origin} 
                         onChange={(e) => {
                           const val = e.target.value;
-                          onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: val }));
+                          onUpdateWaypoint(wp.id, (prev) => ({ ...prev, origin: val, hasUnreachableStop: false }));
                         }}
                         placeholder="Starting place..." 
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
@@ -765,7 +765,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                             attachAutocomplete(el, (addr) => {
                                               onUpdateWaypoint(wp.id, (prev) => ({
                                                 ...prev,
-                                                stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr } : s)
+                                                hasUnreachableStop: false,
+                                                stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: addr, isUnreachable: false, reachabilityWarning: null } : s)
                                               }));
                                             });
                                           }}
@@ -775,7 +776,8 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                             const val = e.target.value;
                                             onUpdateWaypoint(wp.id, (prev) => ({
                                               ...prev,
-                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val } : s)
+                                              hasUnreachableStop: false,
+                                              stops: prev.stops.map(s => s.id === stop.id ? { ...s, destination: val, isUnreachable: false, reachabilityWarning: null } : s)
                                             }));
                                           }}
                                           placeholder={isLastStopOfWaypoint ? "Evening destination or RV park..." : "Lunch, gas or scenic stop..."} 
