@@ -324,22 +324,51 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [waypoints, tripStartDate, user]);
 
-  // Debounced Recalculate Waypoint Metrics (Wait 600ms after user pauses typing or changes stops)
+  // Debounced Recalculate Waypoint Metrics (Wait 1800ms after user pauses typing or changes stops)
   useEffect(() => {
     if (!isGoogleLoaded || waypoints.length === 0) return;
 
     const timer = setTimeout(() => {
       waypoints.forEach((wp) => {
-        // Only run routing calculation if origin and at least one destination are non-empty
-        const hasValidOrigin = !!wp.origin && wp.origin.trim().length > 2;
-        const hasValidStop = wp.stops && wp.stops.some(s => !!s.destination && s.destination.trim().length > 2);
+        // Only run routing calculation if origin and at least one destination are non-empty and reasonably complete
+        const hasValidOrigin = !!wp.origin && wp.origin.trim().length >= 4;
+        const hasValidStop = wp.stops && wp.stops.some(s => !!s.destination && s.destination.trim().length >= 4);
         if (hasValidOrigin && hasValidStop) {
           calculateWaypointMetricsService(wp, (calculatedWp) => {
-            setWaypoints(prev => prev.map(item => item.id === calculatedWp.id ? calculatedWp : item));
+            setWaypoints(prev => prev.map(item => {
+              if (item.id !== calculatedWp.id) return item;
+              return {
+                ...item,
+                estMiles: calculatedWp.estMiles,
+                estHours: calculatedWp.estHours,
+                arrivalHour: calculatedWp.arrivalHour,
+                arrivalMinute: calculatedWp.arrivalMinute,
+                destTimeZoneAbbr: calculatedWp.destTimeZoneAbbr,
+                totalTimeZoneShift: calculatedWp.totalTimeZoneShift,
+                hasUnreachableStop: calculatedWp.hasUnreachableStop,
+                stops: item.stops.map((existingStop, sIdx) => {
+                  const calcStop = calculatedWp.stops.find(s => s.id === existingStop.id) || calculatedWp.stops[sIdx];
+                  if (!calcStop) return existingStop;
+                  return {
+                    ...existingStop,
+                    // CRITICAL: Preserve existingStop.destination as actively typed by the user!
+                    estMiles: calcStop.estMiles,
+                    estHours: calcStop.estHours,
+                    arrivalHour: calcStop.arrivalHour,
+                    arrivalMinute: calcStop.arrivalMinute,
+                    timeZoneAbbr: calcStop.timeZoneAbbr,
+                    timeZoneOffsetHours: calcStop.timeZoneOffsetHours,
+                    timeZoneShiftFromPrev: calcStop.timeZoneShiftFromPrev,
+                    isUnreachable: calcStop.isUnreachable,
+                    reachabilityWarning: calcStop.reachabilityWarning
+                  };
+                })
+              };
+            }));
           });
         }
       });
-    }, 600);
+    }, 1800);
 
     return () => clearTimeout(timer);
   }, [
