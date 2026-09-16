@@ -43,27 +43,39 @@ export const formatResolvedPlaceAddress = (place: any): string => {
 
 /**
  * Checks if a given destination address represents an explicit private residential address
- * (e.g. personal driveway, family house, apartment, or home return) where an RV campground site picker is not required.
+ * (e.g. personal street address, driveway, family house, apartment, or home return)
+ * where an RV campground site picker is not required.
  */
-export const isResidentialAddress = (address: string): boolean => {
+export const isResidentialAddress = (address: string, tripOrigin?: string): boolean => {
   if (!address || !address.trim()) return false;
   const lower = address.toLowerCase().trim();
 
-  // Commercial / campground / park / lodging keywords that SHOULD show RV site picker
+  // 1. If the destination matches the trip's starting origin (Day 1 Home Base), treat as Home Return / Residential
+  if (tripOrigin && tripOrigin.trim()) {
+    const cleanDest = cleanAddressForNavigation(address).toLowerCase();
+    const cleanOrig = cleanAddressForNavigation(tripOrigin).toLowerCase();
+    if (cleanDest && cleanOrig && (cleanDest === cleanOrig || cleanDest.includes(cleanOrig) || cleanOrig.includes(cleanDest))) {
+      return true;
+    }
+  }
+
+  // 2. Commercial / campground / park / lodging / POI keywords that SHOULD show RV site picker
   const campingKeywords = [
     'rv', 'campground', 'camping', 'camp', 'koa', 'resort', 'state park',
-    'national park', 'provincial park', 'blm', 'recreation', 'rec area',
+    'national park', 'provincial park', 'park', 'blm', 'recreation', 'rec area',
     'marina', 'hotel', 'motel', 'lodge', 'inn', 'suites', 'casino',
     'fairground', 'fairgrounds', 'travel plaza', 'flying j', 'pilot', "love's",
     'walmart', 'cracker barrel', 'rest area', 'visitor center', 'viewpoint',
-    'overlook', 'trailhead'
+    'overlook', 'trailhead', 'hot springs', 'golf', 'club', 'lake', 'beach',
+    'ranch', 'farm', 'winery', 'brewery', 'museum', 'center', 'centre',
+    'station', 'store', 'market', 'plaza'
   ];
 
   if (campingKeywords.some(kw => lower.includes(kw))) {
     return false;
   }
 
-  // Explicit private residence keywords
+  // 3. Explicit private residence keywords
   const residentialKeywords = [
     'home',
     'residence',
@@ -81,5 +93,14 @@ export const isResidentialAddress = (address: string): boolean => {
     'condominium'
   ];
 
-  return residentialKeywords.some(kw => lower.includes(kw));
+  if (residentialKeywords.some(kw => lower.includes(kw))) {
+    return true;
+  }
+
+  // 4. Pure street number + street name address without any commercial/campground name (e.g. "4272 135th Pl SE, Bellevue, WA")
+  if (/^\d+\s+[a-z0-9]/i.test(lower)) {
+    return true;
+  }
+
+  return false;
 };
