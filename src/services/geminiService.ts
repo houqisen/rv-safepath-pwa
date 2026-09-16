@@ -1,6 +1,6 @@
 import { RvProfile } from '../types/rv';
 import { AiPlanPreview, Waypoint } from '../types/itinerary';
-import { RvSitePickerResults } from '../types/places';
+import { RvCampsiteRecommendation, RvSitePickerResults } from '../types/places';
 import { normalizeWaypoints, normalizeSiteResults } from '../utils/jsonUtils';
 import { parseDestinationList } from '../utils/addressUtils';
 import { calculateTripDurationAndSeason } from '../utils/dateUtils';
@@ -219,6 +219,151 @@ export interface SitePickerOptions {
   profile: RvProfile;
 }
 
+interface VerifiedGooglePlaceCandidate {
+  name: string;
+  address: string;
+  rating?: number;
+  userRatingsTotal?: number;
+}
+
+const EXCLUDED_PLACE_TYPES = new Set([
+  'fire_station',
+  'police',
+  'city_hall',
+  'local_government_office',
+  'hospital',
+  'school',
+  'courthouse',
+  'post_office'
+]);
+
+async function runPlacesTextSearch(query: string): Promise<any[]> {
+  if (typeof window === 'undefined' || !window.google?.maps?.places?.PlacesService) {
+    return [];
+  }
+  return new Promise((resolve) => {
+    try {
+      const dummyDiv = document.createElement('div');
+      const service = new window.google.maps.places.PlacesService(dummyDiv);
+      service.textSearch({ query }, (results: any[], status: any) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(results)) {
+          resolve(results);
+        } else {
+          resolve([]);
+        }
+      });
+    } catch (e) {
+      console.warn('Google Places textSearch error:', e);
+      resolve([]);
+    }
+  });
+}
+
+function isValidCampgroundOrRvPlace(place: any): boolean {
+  if (!place || !place.name || !place.formatted_address) return false;
+  const types: string[] = Array.isArray(place.types) ? place.types : [];
+  if (types.some(t => EXCLUDED_PLACE_TYPES.has(t))) return false;
+  const nameLower = String(place.name).toLowerCase();
+  if (
+    nameLower.includes('fire department') ||
+    nameLower.includes('fire station') ||
+    nameLower.includes('police') ||
+    nameLower.includes('city hall')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function searchVerifiedGooglePlacesRvParks(destination: string): Promise<VerifiedGooglePlaceCandidate[]> {
+  const [rvResults, campResults] = await Promise.all([
+    runPlacesTextSearch(`RV Park in ${destination}`),
+    runPlacesTextSearch(`Campground in ${destination}`)
+  ]);
+
+  const combined = [...rvResults, ...campResults];
+  const seen = new Set<string>();
+  const verified: VerifiedGooglePlaceCandidate[] = [];
+
+  for (const place of combined) {
+    if (!isValidCampgroundOrRvPlace(place)) continue;
+    const key = (place.place_id || place.name.toLowerCase()).trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    verified.push({
+      name: place.name.trim(),
+      address: place.formatted_address.trim(),
+      rating: place.rating,
+      userRatingsTotal: place.user_ratings_total
+    });
+    if (verified.length >= 8) break;
+  }
+
+  return verified;
+}
+
+async function verifyAndGroundSitesWithGooglePlaces(
+  sites: RvCampsiteRecommendation[],
+  destination: string,
+  verifiedCandidates: VerifiedGooglePlaceCandidate[]
+): Promise<RvCampsiteRecommendation[]> {
+  const usedCandidateNames = new Set<string>();
+
+  const verifiedSites: RvCampsiteRecommendation[] = [];
+
+  for (const site of sites) {
+    const rawName = (site.name || '').trim();
+    const rawNameLower = rawName.toLowerCase();
+
+    // 1. Check if the site matches one of our pre-fetched Google Maps verified candidates
+    let matchedCandidate = verifiedCandidates.find(c => {
+      const cLower = c.name.toLowerCase();
+      return cLower === rawNameLower || cLower.includes(rawNameLower) || rawNameLower.includes(cLower);
+    });
+
+    // 2. If not matched directly, query Google Maps Places for this specific campground name near destination
+    if (!matchedCandidate && rawName) {
+      const lookupResults = await runPlacesTextSearch(`${rawName} near ${destination}`);
+      const bestMatch = lookupResults.find(isValidCampgroundOrRvPlace);
+      if (bestMatch) {
+        matchedCandidate = {
+          name: bestMatch.name.trim(),
+          address: bestMatch.formatted_address.trim(),
+          rating: bestMatch.rating,
+          userRatingsTotal: bestMatch.user_ratings_total
+        };
+      }
+    }
+
+    // 3. If still not verified on Google Maps (e.g. LLM hallucinated name/address like a fire station),
+    // replace with an unused real Google Maps RV park from verifiedCandidates
+    if (!matchedCandidate) {
+      const fallbackCandidate = verifiedCandidates.find(c => !usedCandidateNames.has(c.name.toLowerCase()));
+      if (fallbackCandidate) {
+        matchedCandidate = fallbackCandidate;
+      }
+    }
+
+    if (matchedCandidate) {
+      usedCandidateNames.add(matchedCandidate.name.toLowerCase());
+      verifiedSites.push({
+        ...site,
+        name: matchedCandidate.name,
+        address: matchedCandidate.address
+      });
+    } else {
+      // Final safety net: never allow an unverified street number; route by name + destination
+      verifiedSites.push({
+        ...site,
+        address: `${site.name}, ${destination}`
+      });
+    }
+  }
+
+  return verifiedSites;
+}
+
 export async function fetchRvSitePickerRecommendations(options: SitePickerOptions): Promise<RvSitePickerResults> {
   const effectiveKey = (localStorage.getItem('gemini_api_key') || DEFAULT_GEMINI_API_KEY || "").trim();
   if (!effectiveKey) {
@@ -235,6 +380,23 @@ export async function fetchRvSitePickerRecommendations(options: SitePickerOption
   };
   const hookupPrefDesc = hookupLabels[profile.minHookup] || profile.minHookup;
 
+  // Step 1: Query Google Maps Places API for real, verified RV parks and campgrounds near destination
+  const verifiedCandidates = await searchVerifiedGooglePlacesRvParks(destination);
+
+  const verifiedPlacesContext = verifiedCandidates.length > 0
+    ? `
+    VERIFIED GOOGLE MAPS RV PARKS & CAMPGROUNDS NEAR "${destination}":
+${verifiedCandidates.map((p, i) => `    ${i + 1}. Name: "${p.name}" | Official Google Maps Address: "${p.address}"${p.rating ? ` | Rating: ${p.rating} (${p.userRatingsTotal || 0} reviews)` : ''}`).join('\n')}
+
+    CRITICAL GROUNDING REQUIREMENT:
+    - You MUST select the Top 3 RV parks ONLY from the VERIFIED GOOGLE MAPS RV PARKS list above (if 3 or more are listed).
+    - You MUST copy the EXACT "name" and "address" verbatim from the verified list above.
+    - NEVER invent, guess, or hallucinate street numbers, avenues, or postal codes (e.g., never output municipal/fire station addresses).`
+    : `
+    CRITICAL GROUNDING REQUIREMENT:
+    - Only recommend real, verified RV parks or campgrounds in or immediately adjacent to "${destination}".
+    - NEVER invent or guess street numbers or postal codes. If an exact street number is unknown, use the highway/road name and city/province.`;
+
   const systemPrompt = `
     You are RV SafePath Site Selection Expert, specialized in matching campgrounds and RV resorts to specific vehicle dimensions and towing setups.
     
@@ -247,6 +409,7 @@ export async function fetchRvSitePickerRecommendations(options: SitePickerOption
     - Towing / Drive Setup: ${profile.towSetup}
     - Active Memberships: ${profile.memberships.join(', ') || 'None'}
     - Travel Season: ${season}
+    ${verifiedPlacesContext}
 
     TASK:
     Find and compare the Top 3 best, real, and verified RV parks or campgrounds in or immediately adjacent to "${destination}" for a stay of ${stayNights} nights during ${season}.
@@ -307,9 +470,15 @@ export async function fetchRvSitePickerRecommendations(options: SitePickerOption
         const parsedObj = JSON.parse(rawText);
         const sitesList = normalizeSiteResults(parsedObj);
         if (sitesList.length > 0) {
+          // Step 2: Post-verify every returned site against Google Maps Places API
+          const verifiedSites = await verifyAndGroundSitesWithGooglePlaces(
+            sitesList,
+            destination,
+            verifiedCandidates
+          );
           return {
             location: destination,
-            sites: sitesList
+            sites: verifiedSites
           };
         }
       } else {
