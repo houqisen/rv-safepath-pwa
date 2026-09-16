@@ -887,7 +887,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                     </div>
 
                                     {/* RV Site Picker Button for Final Overnight Stop (Suppressed for Home Returns and Residential Addresses) */}
-                                    {isLastStopOfWaypoint && stop.destination && !wp.isHomeReturn && !isResidentialAddress(stop.destination) && (
+                                    {isLastStopOfWaypoint && stop.destination && !wp.isHomeReturn && !isResidentialAddress(stop.destination, waypoints[0]?.origin) && (
                                       <button
                                         type="button"
                                         onClick={() => onOpenSitePicker(stop.destination, stayCount > 0 ? stayCount : 1, wp.id, sIdx)}
@@ -899,7 +899,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
                                       </button>
                                     )}
 
-                                    {isLastStopOfWaypoint && stop.destination && (wp.isHomeReturn || isResidentialAddress(stop.destination)) && (
+                                    {isLastStopOfWaypoint && stop.destination && (wp.isHomeReturn || isResidentialAddress(stop.destination, waypoints[0]?.origin)) && (
                                       <span className="text-[10px] bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2 py-1 rounded-lg flex items-center gap-1.5" title={wp.isHomeReturn ? "Return Home" : "Residential destination / private driveway"}>
                                         <i className="fa-solid fa-house-user text-slate-400"></i>
                                         <span>{wp.isHomeReturn ? "Return Home" : "Residential Destination"}</span>
