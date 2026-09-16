@@ -99,6 +99,19 @@ export const RvSitePickerModal: React.FC<RvSitePickerModalProps> = ({
                           </div>
                           <div className="text-sm font-bold text-slate-100 mt-1">{site.name}</div>
                           <div className="text-[10px] text-slate-400 font-normal">{site.category}</div>
+                          {site.address && (
+                            <div className="mt-1 text-[10px] text-slate-300 font-normal flex flex-col gap-0.5">
+                              <span className="truncate" title={site.address}>📍 {site.address}</span>
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${site.name} ${site.address}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sky-400 hover:text-sky-300 underline inline-flex items-center gap-1 font-medium w-fit"
+                              >
+                                <i className="fa-solid fa-map-location-dot text-[9px]"></i> Verify on Google Maps
+                              </a>
+                            </div>
+                          )}
                         </th>
                       ))}
                     </tr>
