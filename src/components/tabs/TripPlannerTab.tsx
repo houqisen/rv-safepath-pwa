@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { RvProfile } from '../../types/rv';
 import { Waypoint, WaypointStop, DestinationWeather } from '../../types/itinerary';
 import { getWaypointDisplayDay, getWaypointDate, formatWaypointDateDisplay } from '../../utils/dateUtils';
-import { formatResolvedPlaceAddress, isResidentialAddress } from '../../utils/addressUtils';
+import { formatResolvedPlaceAddress, isResidentialAddress, cleanAddressForNavigation } from '../../utils/addressUtils';
 
 interface TripPlannerTabProps {
   waypoints: Waypoint[];
@@ -10,6 +10,7 @@ interface TripPlannerTabProps {
   onUpdateTripStartDate?: (dateStr: string) => void;
   destinationWeathers: Record<string, DestinationWeather>;
   profile: RvProfile;
+  isGoogleLoaded?: boolean;
   isLoadingWeather?: boolean;
   onFetchWeather?: () => void;
   onOpenAiCopilot: () => void;
@@ -100,6 +101,7 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   onUpdateTripStartDate,
   destinationWeathers,
   profile,
+  isGoogleLoaded = false,
   isLoadingWeather = false,
   onFetchWeather,
   onOpenAiCopilot,
@@ -128,18 +130,25 @@ export const TripPlannerTab: React.FC<TripPlannerTabProps> = ({
   };
 
   const attachAutocomplete = (inputEl: HTMLInputElement | null, onSelected: (addr: string) => void) => {
-    if (!inputEl || !window.google || !window.google.maps || !window.google.maps.places) return;
+    if (!inputEl) return;
+    // Always keep the latest callback reference on the DOM element so place_changed never calls a stale closure
+    (inputEl as any).__onAutocompleteSelect = onSelected;
+
+    if (!window.google || !window.google.maps || !window.google.maps.places) return;
     if (attachedInputsRef.current.has(inputEl)) return;
 
     try {
-      const autocomplete = new window.google.maps.places.Autocomplete(inputEl);
+      const autocomplete = new window.google.maps.places.Autocomplete(inputEl, {
+        fields: ['formatted_address', 'name', 'geometry']
+      });
       attachedInputsRef.current.add(inputEl);
 
       autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace();
-        const formatted = formatResolvedPlaceAddress(place);
+        const formatted = formatResolvedPlaceAddress(place) || cleanAddressForNavigation(inputEl.value);
         if (formatted) {
-          onSelected(formatted);
+          const handler = (inputEl as any).__onAutocompleteSelect;
+          if (handler) handler(formatted);
         }
       });
     } catch (e) {
