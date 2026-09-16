@@ -60,20 +60,19 @@ export function calculateWaypointMetricsService(
           let depM = stop.depMin !== undefined ? stop.depMin : 0;
           let depAP = stop.depAmPm || (sIdx === 0 ? 'AM' : 'PM');
 
+          // Only assign a default cascaded departure time if the stop has no explicit departure time set
+          if (stop.depHour === undefined && sIdx > 0 && prevArrivalTotalMins !== undefined) {
+            const defaultDepMins = Math.min(23 * 60 + 45, Math.ceil((prevArrivalTotalMins + 15) / 15) * 15);
+            const newDepH24 = Math.floor(defaultDepMins / 60) % 24;
+            depH = newDepH24 % 12 || 12;
+            depM = defaultDepMins % 60;
+            depAP = newDepH24 >= 12 ? 'PM' : 'AM';
+          }
+
           // Convert departure time to minutes from midnight
           let depBaseH = depH % 12;
           if (depAP === 'PM') depBaseH += 12;
-          let stopDepTotalMins = depBaseH * 60 + depM;
-
-          // For stops after stop 0: if departure was set before previous stop arrival (or user didn't specify a valid time),
-          // cascade departure to previous stop arrival + 15 min default stay (rounded to 15-min increments)
-          if (sIdx > 0 && prevArrivalTotalMins !== undefined && stopDepTotalMins < prevArrivalTotalMins) {
-            stopDepTotalMins = Math.min(23 * 60 + 45, Math.ceil((prevArrivalTotalMins + 15) / 15) * 15);
-            const newDepH24 = Math.floor(stopDepTotalMins / 60) % 24;
-            depH = newDepH24 % 12 || 12;
-            depM = stopDepTotalMins % 60;
-            depAP = newDepH24 >= 12 ? 'PM' : 'AM';
-          }
+          const stopDepTotalMins = depBaseH * 60 + depM;
 
           // CR #1: Calculate time zone shift for this leg
           const legDepAddr = sIdx === 0 ? origin : stops[sIdx - 1].destination;
