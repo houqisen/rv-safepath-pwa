@@ -401,7 +401,7 @@ export default function App() {
     }
   };
 
-  // AI Copilot Plan Handler
+    // AI Copilot Plan Handler
   const handleApplyAiPlan = (plan: AiPlanPreview, mode: 'replace' | 'append', startDate?: string) => {
     // Only update tripStartDate if mode is 'replace' OR if no start date was previously set
     if (startDate && (mode === 'replace' || !tripStartDate)) {
@@ -618,6 +618,7 @@ export default function App() {
               }}
               destinationWeathers={destinationWeathers}
               profile={profile}
+              isGoogleLoaded={isGoogleLoaded}
               isLoadingWeather={isLoadingWeather}
               onFetchWeather={handleFetchWeather}
               onOpenAiCopilot={() => setIsAiCopilotOpen(true)}
